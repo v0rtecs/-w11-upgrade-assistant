@@ -1,0 +1,26 @@
+CONFIGURAZIONE APPS SCRIPT
+
+1. Apri il Google Sheet "Registro Upgrade Windows 11 - PWA".
+2. Vai su Estensioni > Apps Script.
+3. Cancella il contenuto di Code.gs e incolla il file Code.gs di questo pacchetto.
+4. Cambia:
+   const SYNC_KEY = 'CAMBIA-QUESTA-CHIAVE';
+   con una chiave lunga e casuale, non riutilizzata altrove.
+5. Salva.
+6. Distribuisci > Nuova distribuzione.
+7. Tipo: App web.
+8. Esegui come: Me.
+9. Chi ha accesso: Chiunque.
+10. Distribuisci e autorizza lo script.
+11. Copia l'URL che termina in /exec.
+12. Nella PWA inserisci:
+    - URL Web App Apps Script
+    - la stessa SYNC_KEY
+    poi premi Salva configurazione.
+13. Premi Invia test.
+14. Prova una sessione reale.
+
+Nota:
+- La password AnyDesk non viene mai inviata.
+- La PWA salva prima in locale.
+- Se sei offline, usa "Sincronizza dati locali" dopo.

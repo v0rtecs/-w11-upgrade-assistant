@@ -1,10 +1,9 @@
 {
   "name": "W11 Upgrade Assistant",
   "short_name": "W11 Upgrade",
-  "description": "Checklist Windows 11 con registro locale, AnyDesk e sincronizzazione Google Sheets via account Google.",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f4f6fb",
+  "background_color": "#f5f7fb",
   "theme_color": "#1f2b67",
   "icons": [
     {
