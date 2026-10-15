@@ -25,7 +25,7 @@ button{padding:12px 14px;border:0;border-radius:10px;font-weight:800;cursor:poin
 </head>
 <body>
 <div class="wrap">
-<section class="hero"><h1 style="margin:0 0 5px">W11 Upgrade Assistant</h1><p style="margin:0;opacity:.9">Checklist, tempi, AnyDesk e sincronizzazione Google Sheets via Apps Script.</p></section>
+<section class="hero"><h1 style="margin:0 0 5px">W11 Upgrade Assistant</h1><p style="margin:0;opacity:.9">Checklist operativa, AnyDesk e sincronizzazione Google Sheets.</p></section>
 
 <section class="card">
 <div class="grid g2">
@@ -43,7 +43,6 @@ button{padding:12px 14px;border:0;border-radius:10px;font-weight:800;cursor:poin
 <section class="card">
 <div class="stats">
 <div class="stat"><small>Avanzamento</small><strong id="pct">0%</strong></div>
-
 <div class="stat"><small>Task</small><strong id="count">0 / 18</strong></div>
 <div class="stat"><small>Sessioni</small><strong id="savedCount">0</strong></div>
 </div>
@@ -56,13 +55,13 @@ button{padding:12px 14px;border:0;border-radius:10px;font-weight:800;cursor:poin
 
 <section class="card">
 <div style="font-weight:800">Sincronizzazione Google Sheets</div>
-<div class="small">Nessun login Google nella PWA: si usa una Web App Apps Script.</div>
+<div class="small">Nessun login Google nella PWA: si usa una Web App Apps Script. La risincronizzazione manuale può essere ripetuta senza creare doppioni.</div>
 <div class="grid g2" style="margin-top:10px">
 <div style="grid-column:1/-1"><label>URL Web App Apps Script</label><input id="scriptUrl" placeholder="https://script.google.com/macros/s/.../exec"></div>
 <div><label>Chiave di sincronizzazione</label><input id="syncKey" type="password" placeholder="Chiave privata"></div>
 <div><label>Stato</label><input id="syncState" value="Non configurata" readonly></div>
 </div>
-<div class="actions" style="margin-top:10px"><button id="saveSyncConfig" class="secondary">Salva configurazione</button><button id="testSync" class="secondary">Invia test</button><button id="syncPending" class="primary" disabled>Sincronizza dati locali</button></div>
+<div class="actions" style="margin-top:10px"><button id="saveSyncConfig" class="secondary">Salva configurazione</button><button id="testSync" class="secondary">Invia test</button><button id="syncPending" class="primary" disabled>Risincronizza dati locali</button></div>
 <div id="syncMsg" class="small" style="margin-top:8px"></div>
 </section>
 
@@ -77,6 +76,7 @@ button{padding:12px 14px;border:0;border-radius:10px;font-weight:800;cursor:poin
 </div>
 
 <script>
+const DEFAULT_SCRIPT_URL='https://script.google.com/macros/s/AKfycbw7caLc-rlevw9GrLOSyLu_89ITnXtjbo2IIEYi01De9T1oWF19wpTVQYaoQnvMYb6I_w/exec';
 const PHASES=[
 ['A · Preparazione',[['Verifica client','Identifica il PC corretto nell’elenco client.',''],['Concorda attività','Contatta l’assegnatario del PC e concorda l’intervento.','']]],
 ['B · Pre-attività',[['Controlla spazio libero','Verifica lo spazio disponibile sul disco C:.',''],['Protezione sistema','Controlla che la protezione di C: sia attiva.',''],['Punto di ripristino','Cancella i vecchi punti e crea PR PS aaaa.mm.gg.',''],['Pulizia Disco','Esegui Pulizia Disco come amministratore.',''],['PatchCleaner','Cancella SOLO gli Orphaned files.',''],['Cartelle Temp','Rimuovi i file temporanei degli utenti.','c:\\users\\{utente}\\appdata\\local\\temp'],['Ricontrolla spazio','Sotto i 10 GB non procedere e segnala il PC.','']]],
@@ -92,19 +92,29 @@ const saveLocal=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 function stamp(){return new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
 function makeId(){return 'W11-'+Date.now().toString(36).toUpperCase()+'-'+Math.random().toString(36).slice(2,6).toUpperCase()}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function getSyncUrl(){return localStorage.getItem('w11_script_url')||''}
+function getSyncUrl(){return localStorage.getItem('w11_script_url')||DEFAULT_SCRIPT_URL}
 function getSyncKey(){return localStorage.getItem('w11_sync_key')||''}
-function setSyncStatus(){const c=!!getSyncUrl()&&!!getSyncKey();$('syncState').value=c?'Configurata':'Non configurata';$('syncPending').disabled=!c||loadSessions().every(s=>s.remoteSent)}
+function setSyncStatus(){const c=!!getSyncUrl()&&!!getSyncKey();$('syncState').value=c?'Configurata':'Non configurata';$('syncPending').disabled=!c||loadSessions().length===0}
 async function postToScript(payload){const url=getSyncUrl();if(!url||!getSyncKey())throw new Error('Configurazione incompleta');await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})}
 function sessionPayload(s){return {key:getSyncKey(),type:'session',session:s,tasks:loadTaskArchive().filter(t=>t.sessionId===s.sessionId)}}
-async function syncPendingSessions(){const sessions=loadSessions(),pending=sessions.filter(s=>!s.remoteSent);if(!pending.length){$('syncMsg').textContent='Nessuna sessione da sincronizzare.';return}try{for(const s of pending){await postToScript(sessionPayload(s));s.remoteSent=true;s.remoteSentAt=new Date().toISOString()}saveLocal('w11_sessions_v2',sessions);$('syncMsg').textContent='Sincronizzazione inviata.'}catch(e){$('syncMsg').textContent='Errore: '+e.message}setSyncStatus()}
+async function syncPendingSessions(){
+  const sessions=loadSessions();
+  if(!sessions.length){$('syncMsg').textContent='Nessuna sessione locale da sincronizzare.';return}
+  try{
+    $('syncMsg').textContent='Risincronizzazione in corso...';
+    for(const s of sessions){await postToScript(sessionPayload(s));s.remoteSent=true;s.remoteSentAt=new Date().toISOString()}
+    saveLocal('w11_sessions_v2',sessions);
+    $('syncMsg').textContent='Risincronizzazione inviata. Il registro centrale elimina automaticamente i doppioni.';
+  }catch(e){$('syncMsg').textContent='Errore: '+e.message}
+  setSyncStatus();
+}
 function renderTasks(){const wrap=$('tasks');wrap.innerHTML='';PHASES.forEach(p=>{const box=document.createElement('section');box.className='card';box.innerHTML='<b>'+esc(p[0])+'</b>';tasks.filter(t=>t.phase===p[0]).forEach(t=>{const idx=tasks.indexOf(t),row=document.createElement('label');row.className='task'+(t.done?' done':'');row.dataset.idx=idx;row.innerHTML='<input type="checkbox" '+(t.done?'checked':'')+' '+(!started?'disabled':'')+'><div class="body"><div class="title"><b>'+esc(t.title)+'</b></div><div class="small">'+esc(t.desc)+'</div>'+(t.cmd?'<span class="cmd">'+esc(t.cmd)+'</span>':'')+'</div><div class="small">'+esc(t.completed)+'</div>';row.querySelector('input').addEventListener('change',e=>{t.done=e.target.checked;t.completed=t.done?stamp():'';renderTasks()});box.appendChild(row)});wrap.appendChild(box)});update()}
 function update(){const done=tasks.filter(t=>t.done).length,p=Math.round(done/tasks.length*100);$('pct').textContent=p+'%';$('count').textContent=done+' / '+tasks.length;$('bar').style.width=p+'%';$('savedCount').textContent=loadSessions().length;document.querySelectorAll('.task').forEach(r=>r.classList.remove('current'));const idx=tasks.findIndex(t=>!t.done);if(started&&idx>=0){$('next').textContent=tasks[idx].title+' — '+tasks[idx].desc;const r=document.querySelector('[data-idx="'+idx+'"]');if(r)r.classList.add('current')}else if(started){$('next').textContent='Tutte le task completate. Salva la sessione.'}}
 $('startBtn').addEventListener('click',()=>{if(!$('pc').value.trim()||!$('operator').value.trim()){$('msg').textContent='Inserisci nome host e operatore.';return}started=true;startAt=Date.now();currentId=makeId();$('saveBtn').disabled=false;$('msg').textContent='Sessione '+currentId+' avviata.';renderTasks()});
-$('saveSyncConfig').addEventListener('click',()=>{const u=$('scriptUrl').value.trim(),k=$('syncKey').value.trim();if(!u||!k){$('syncMsg').textContent='Inserisci URL e chiave.';return}localStorage.setItem('w11_script_url',u);localStorage.setItem('w11_sync_key',k);$('syncMsg').textContent='Configurazione salvata.';setSyncStatus()});
-$('testSync').addEventListener('click',async()=>{const u=$('scriptUrl').value.trim(),k=$('syncKey').value.trim();if(u)localStorage.setItem('w11_script_url',u);if(k)localStorage.setItem('w11_sync_key',k);try{await postToScript({key:getSyncKey(),type:'ping',sentAt:new Date().toISOString()});$('syncMsg').textContent='Richiesta test inviata.'}catch(e){$('syncMsg').textContent='Errore: '+e.message}});
+$('saveSyncConfig').addEventListener('click',()=>{const u=$('scriptUrl').value.trim()||DEFAULT_SCRIPT_URL,k=$('syncKey').value.trim();if(!k){$('syncMsg').textContent='Inserisci la chiave di sincronizzazione.';return}localStorage.setItem('w11_script_url',u);localStorage.setItem('w11_sync_key',k);$('scriptUrl').value=u;$('syncMsg').textContent='Configurazione salvata.';setSyncStatus()});
+$('testSync').addEventListener('click',async()=>{const u=$('scriptUrl').value.trim()||DEFAULT_SCRIPT_URL,k=$('syncKey').value.trim();if(u)localStorage.setItem('w11_script_url',u);if(k)localStorage.setItem('w11_sync_key',k);try{await postToScript({key:getSyncKey(),type:'ping',sentAt:new Date().toISOString()});$('syncMsg').textContent='Richiesta test inviata.'}catch(e){$('syncMsg').textContent='Errore: '+e.message}});
 $('syncPending').addEventListener('click',syncPendingSessions);
-$('saveBtn').addEventListener('click',async()=>{if(!started)return;const done=tasks.filter(t=>t.done).length,now=new Date();const rec={sessionId:currentId,pc:$('pc').value.trim(),date:new Date(startAt).toLocaleDateString('it-IT'),start:new Date(startAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),end:now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),completed:done,total:tasks.length,completion:(done/tasks.length).toFixed(4),outcome:$('outcome').value,reason:$('outcome').value==='Bloccato'?$('notes').value.trim():'',operator:$('operator').value.trim(),notes:$('notes').value.trim(),anydeskId:$('anydeskId').value.trim(),autoAccess:$('autoAccess').value,remoteSent:false};const sessions=loadSessions();sessions.push(rec);saveLocal('w11_sessions_v2',sessions);const archive=loadTaskArchive();tasks.forEach(t=>archive.push({sessionId:currentId,pc:rec.pc,phase:t.phase,order:t.order,task:t.title,status:t.done?'Completato':'Non completato',completedAt:t.completed,command:t.cmd,note:rec.notes}));saveLocal('w11_task_archive_v2',archive);$('anydeskPassword').value='';$('saveBtn').disabled=true;$('exportSessions').disabled=false;$('exportTasks').disabled=false;$('saveMsg').textContent='Sessione salvata sul dispositivo.';if(getSyncUrl()&&getSyncKey()){try{await postToScript(sessionPayload(rec));rec.remoteSent=true;const upd=loadSessions().map(x=>x.sessionId===rec.sessionId?rec:x);saveLocal('w11_sessions_v2',upd);$('saveMsg').textContent='Sessione salvata e inviata al registro Google Sheets.'}catch(e){$('saveMsg').textContent='Salvata in locale, invio non riuscito: '+e.message}}update();setSyncStatus();});
+$('saveBtn').addEventListener('click',async()=>{if(!started)return;const done=tasks.filter(t=>t.done).length,now=new Date();const rec={sessionId:currentId,pc:$('pc').value.trim(),date:new Date(startAt).toLocaleDateString('it-IT'),start:new Date(startAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),end:now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),completed:done,total:tasks.length,completion:(done/tasks.length).toFixed(4),outcome:$('outcome').value,reason:$('outcome').value==='Bloccato'?$('notes').value.trim():'',operator:$('operator').value.trim(),notes:$('notes').value.trim(),anydeskId:$('anydeskId').value.trim(),autoAccess:$('autoAccess').value,remoteSent:false};const sessions=loadSessions();sessions.push(rec);saveLocal('w11_sessions_v2',sessions);const archive=loadTaskArchive();tasks.forEach(t=>archive.push({sessionId:currentId,pc:rec.pc,phase:t.phase,order:t.order,task:t.title,status:t.done?'Completato':'Non completato',completedAt:t.completed,command:t.cmd,note:rec.notes}));saveLocal('w11_task_archive_v2',archive);$('anydeskPassword').value='';$('saveBtn').disabled=true;$('exportSessions').disabled=false;$('exportTasks').disabled=false;$('saveMsg').textContent='Sessione salvata sul dispositivo.';if(getSyncUrl()&&getSyncKey()){try{await postToScript(sessionPayload(rec));rec.remoteSent=true;const upd=loadSessions().map(x=>x.sessionId===rec.sessionId?rec:x);saveLocal('w11_sessions_v2',upd);$('saveMsg').textContent='Sessione salvata; richiesta di sincronizzazione inviata al registro Google Sheets.'}catch(e){$('saveMsg').textContent='Salvata in locale, invio non riuscito: '+e.message}}update();setSyncStatus();});
 function csvDownload(name,headers,rows){const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const txt='\uFEFF'+[headers,...rows].map(r=>r.map(q).join(';')).join('\r\n');const blob=new Blob([txt],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 $('exportSessions').addEventListener('click',()=>{const rows=loadSessions().map(x=>[x.sessionId,x.pc,x.date,x.start,x.end,x.completed,x.total,x.completion,x.outcome,x.reason,x.operator,x.notes,x.anydeskId,x.autoAccess]);csvDownload('Registro_sessioni_W11.csv',['Session ID','Nome host','Data','Ora inizio','Ora fine','Task completate','Task totali','Completamento %','Esito','Motivo blocco','Operatore','Note','ID AnyDesk','Accesso automatico configurato'],rows)});
 $('exportTasks').addEventListener('click',()=>{const rows=loadTaskArchive().map(t=>[t.sessionId,t.pc,t.phase,t.order,t.task,t.status,t.completedAt,t.command,t.note]);csvDownload('Dettaglio_task_W11.csv',['Session ID','Nome host','Fase','Ordine','Task','Stato','Ora completamento','Comando','Nota / anomalia'],rows)});
