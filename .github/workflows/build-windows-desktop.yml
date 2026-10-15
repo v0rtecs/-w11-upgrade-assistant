@@ -1,0 +1,51 @@
+name: Build Windows Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "manifest.webmanifest"
+      - "icon-192.png"
+      - "icon-512.png"
+      - "desktop/**"
+      - ".github/workflows/build-windows-desktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: Install Tauri CLI
+        working-directory: desktop
+        run: npm install
+
+      - name: Build portable Windows EXE
+        working-directory: desktop
+        run: npm run build:win
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: W11-Upgrade-Assistant-Windows
+          path: desktop/src-tauri/target/release/w11-upgrade-assistant.exe
+          if-no-files-found: error
