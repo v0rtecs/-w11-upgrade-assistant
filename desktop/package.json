@@ -1,0 +1,14 @@
+{
+  "name": "w11-upgrade-assistant-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Standalone Windows desktop wrapper for W11 Upgrade Assistant",
+  "scripts": {
+    "sync-web": "node scripts/copy-frontend.mjs",
+    "dev": "tauri dev",
+    "build:win": "tauri build --no-bundle"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
