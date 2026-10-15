@@ -3,29 +3,183 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#1f2b67">
+<meta name="theme-color" content="#1f2b67" id="themeColorMeta">
 <title>W11 Upgrade Assistant</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
-:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#6b7280;--line:#dfe3eb;--accent:#1f2b67;--accent2:#c4318c}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
-.wrap{max-width:850px;margin:auto;padding:14px}.hero{background:linear-gradient(135deg,var(--accent),#384aa6);color:white;padding:20px;border-radius:20px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:12px}
-.grid{display:grid;gap:10px}.g2{grid-template-columns:1fr 1fr}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-label{font-size:13px;font-weight:700;display:block;margin-bottom:5px}input,select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px}
-button{padding:12px 14px;border:0;border-radius:10px;font-weight:800;cursor:pointer}.primary{background:var(--accent);color:#fff}.secondary{background:#eef1f8;color:var(--accent)}button:disabled{opacity:.45}
-.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{flex:1 1 180px}.small{font-size:13px;color:var(--muted)}.note{background:#f7f4fd;border:1px solid #e6dcf8;border-radius:10px;padding:10px;font-size:13px;color:var(--muted)}
-.stat{background:#f8f9fc;border-radius:12px;padding:10px}.stat small{color:var(--muted)}.stat strong{display:block;font-size:20px}
-.progress{height:9px;background:#e8ecf4;border-radius:999px;overflow:hidden;margin-top:10px}.progress div{height:100%;width:0;background:var(--accent2)}
-.task{display:flex;gap:10px;border-top:1px solid var(--line);padding:11px 0;align-items:flex-start}.task:first-child{border-top:0}.task input{width:22px;height:22px}.task .body{flex:1}.cmd{display:inline-block;margin-top:7px;background:#111827;color:#e5e7eb;padding:7px 9px;border-radius:8px;font-family:Consolas,monospace;font-size:13px}
-.done .title{text-decoration:line-through;opacity:.6}.current{outline:2px solid var(--accent2);outline-offset:2px;border-radius:8px}
-@media(max-width:650px){.g2{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
+:root{
+  --bg:#f5f7fb;--card:#ffffff;--text:#172033;--muted:#6b7280;--line:#dfe3eb;
+  --accent:#1f2b67;--accent2:#c4318c;--hero2:#384aa6;--secondary:#eef1f8;
+  --note:#f7f4fd;--note-line:#e6dcf8;--stat:#f8f9fc;--cmd-bg:#111827;--cmd-text:#e5e7eb;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:var(--bg);color:var(--text);transition:background .25s ease,color .25s ease;
+}
+.wrap{max-width:850px;margin:auto;padding:14px}
+.hero{
+  background:linear-gradient(135deg,var(--accent),var(--hero2));color:white;
+  padding:20px;border-radius:20px;position:relative;overflow:hidden;
+  box-shadow:0 12px 30px rgba(0,0,0,.12);transition:background .25s ease;
+}
+.hero:after{
+  content:"";position:absolute;width:180px;height:180px;border-radius:50%;
+  right:-70px;top:-90px;background:rgba(255,255,255,.08);pointer-events:none;
+}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:16px;margin-top:12px;transition:background .25s ease,border-color .25s ease,transform .2s ease;
+}
+.grid{display:grid;gap:10px}.g2{grid-template-columns:1fr 1fr}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+label{font-size:13px;font-weight:700;display:block;margin-bottom:5px}
+input,select,textarea{
+  width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px;
+  background:var(--card);color:var(--text);transition:border-color .2s ease,background .25s ease;
+}
+input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(--accent2) 35%,transparent);border-color:var(--accent2)}
+input[type="color"]{height:48px;padding:5px;cursor:pointer}
+input[type="range"]{padding:0;accent-color:var(--accent2)}
+input[type="checkbox"]{accent-color:var(--accent2)}
+button{
+  padding:12px 14px;border:0;border-radius:10px;font-weight:800;cursor:pointer;
+  transition:transform .12s ease,filter .12s ease,background .25s ease,color .25s ease;
+}
+button:active{transform:scale(.98)}
+button:hover{filter:brightness(1.04)}
+.primary{background:var(--accent);color:#fff}
+.secondary{background:var(--secondary);color:var(--text)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{flex:1 1 180px}
+.small{font-size:13px;color:var(--muted)}
+.note{background:var(--note);border:1px solid var(--note-line);border-radius:10px;padding:10px;font-size:13px;color:var(--muted)}
+.stat{background:var(--stat);border-radius:12px;padding:10px}
+.stat small{color:var(--muted)}.stat strong{display:block;font-size:20px}
+.progress{height:9px;background:var(--secondary);border-radius:999px;overflow:hidden;margin-top:10px}
+.progress div{height:100%;width:0;background:var(--accent2);transition:width .25s ease}
+.task{
+  display:flex;gap:10px;border-top:1px solid var(--line);padding:11px 0;align-items:flex-start;
+  transition:background .18s ease,transform .18s ease;
+}
+.task:first-child{border-top:0}.task input{width:22px;height:22px;flex:0 0 auto}
+.task .body{flex:1}.cmd{
+  display:inline-block;margin-top:7px;background:var(--cmd-bg);color:var(--cmd-text);
+  padding:7px 9px;border-radius:8px;font-family:Consolas,monospace;font-size:13px
+}
+.done .title{text-decoration:line-through;opacity:.58}
+.current{outline:2px solid var(--accent2);outline-offset:2px;border-radius:8px}
+details.card{padding:0;overflow:hidden}
+details.card>summary{
+  list-style:none;cursor:pointer;padding:16px;font-weight:900;display:flex;align-items:center;justify-content:space-between;
+}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary:after{content:"＋";font-size:22px;color:var(--accent2)}
+details.card[open]>summary:after{content:"−"}
+.settings-body{padding:0 16px 16px}
+.palette-preview{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.palette-chip{border:1px solid var(--line);border-radius:12px;padding:9px;background:var(--card);cursor:pointer}
+.palette-chip strong{display:block;font-size:12px;margin-bottom:6px}
+.swatches{display:flex;height:16px;border-radius:999px;overflow:hidden}
+.swatches span{flex:1}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
+.toggle-row:first-child{border-top:0}
+.switch{position:relative;width:48px;height:28px;flex:0 0 auto}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:var(--line);border-radius:999px;cursor:pointer;transition:.2s}
+.slider:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.switch input:checked+.slider{background:var(--accent2)}
+.switch input:checked+.slider:before{transform:translateX(20px)}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:var(--secondary);font-size:12px;color:var(--muted)}
+.flash{animation:flash .28s ease}
+@keyframes flash{0%{transform:scale(1)}50%{transform:scale(1.01)}100%{transform:scale(1)}}
+@media(max-width:650px){
+  .g2{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.palette-preview{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-<section class="hero"><h1 style="margin:0 0 5px">W11 Upgrade Assistant</h1><p style="margin:0;opacity:.9">Checklist operativa, AnyDesk e sincronizzazione Google Sheets.</p></section>
+<section class="hero">
+  <h1 style="margin:0 0 5px">W11 Upgrade Assistant</h1>
+  <p style="margin:0;opacity:.9">Checklist operativa, AnyDesk e sincronizzazione Google Sheets.</p>
+</section>
+
+<details class="card" id="personalization">
+  <summary>🎨 Tema & Suoni <span class="badge">V3</span></summary>
+  <div class="settings-body">
+    <div class="grid g2">
+      <div>
+        <label>Palette</label>
+        <select id="themePreset">
+          <option value="corporate">Corporate Clean</option>
+          <option value="azeroth">Azeroth Night</option>
+          <option value="fel">Fel Energy</option>
+        </select>
+      </div>
+      <div>
+        <label>Preset sonoro</label>
+        <select id="soundPreset">
+          <option value="soft">Soft</option>
+          <option value="mechanical">Mechanical</option>
+          <option value="fantasy">Fantasy</option>
+        </select>
+      </div>
+      <div>
+        <label>Colore principale</label>
+        <input id="customAccent" type="color" value="#1f2b67">
+      </div>
+      <div>
+        <label>Colore accento</label>
+        <input id="customAccent2" type="color" value="#c4318c">
+      </div>
+      <div style="grid-column:1/-1">
+        <label>Volume <span id="volumeLabel">45%</span></label>
+        <input id="soundVolume" type="range" min="0" max="100" step="1" value="45">
+      </div>
+    </div>
+
+    <div class="palette-preview">
+      <button class="palette-chip" type="button" data-palette="corporate">
+        <strong>Corporate Clean</strong>
+        <span class="swatches"><span style="background:#1f2b67"></span><span style="background:#c4318c"></span><span style="background:#f5f7fb"></span></span>
+      </button>
+      <button class="palette-chip" type="button" data-palette="azeroth">
+        <strong>Azeroth Night</strong>
+        <span class="swatches"><span style="background:#1e3a5f"></span><span style="background:#d4a24c"></span><span style="background:#0f1724"></span></span>
+      </button>
+      <button class="palette-chip" type="button" data-palette="fel">
+        <strong>Fel Energy</strong>
+        <span class="swatches"><span style="background:#213e2c"></span><span style="background:#6cff4d"></span><span style="background:#0a0f0d"></span></span>
+      </button>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="toggle-row">
+        <div><b>Suoni interfaccia</b><div class="small">Feedback su task, salvataggio e sincronizzazione.</div></div>
+        <label class="switch"><input id="soundsOn" type="checkbox" checked><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div><b>Ghiera durante lo scroll</b><div class="small">Tick leggero e limitato, attivabile solo se ti piace.</div></div>
+        <label class="switch"><input id="scrollSound" type="checkbox"><span class="slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div><b>Feedback aptico</b><div class="small">Usa una vibrazione breve sui dispositivi compatibili.</div></div>
+        <label class="switch"><input id="hapticsOn" type="checkbox" checked><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="actions" style="margin-top:10px">
+      <button id="testSound" type="button" class="primary">Prova suono</button>
+      <button id="resetUi" type="button" class="secondary">Ripristina stile</button>
+    </div>
+    <div class="note" style="margin-top:10px">
+      Le preferenze restano solo su questo dispositivo. Su iPhone può essere necessario toccare una volta “Prova suono” per sbloccare l’audio.
+    </div>
+  </div>
+</details>
 
 <section class="card">
 <div class="grid g2">
@@ -77,12 +231,22 @@ button{padding:12px 14px;border:0;border-radius:10px;font-weight:800;cursor:poin
 
 <script>
 const DEFAULT_SCRIPT_URL='https://script.google.com/macros/s/AKfycbw7caLc-rlevw9GrLOSyLu_89ITnXtjbo2IIEYi01De9T1oWF19wpTVQYaoQnvMYb6I_w/exec';
+
+const THEMES={
+  corporate:{name:'Corporate Clean',vars:{bg:'#f5f7fb',card:'#ffffff',text:'#172033',muted:'#6b7280',line:'#dfe3eb',accent:'#1f2b67',accent2:'#c4318c',hero2:'#384aa6',secondary:'#eef1f8',note:'#f7f4fd','note-line':'#e6dcf8',stat:'#f8f9fc','cmd-bg':'#111827','cmd-text':'#e5e7eb'}},
+  azeroth:{name:'Azeroth Night',vars:{bg:'#0f1724',card:'#1a2333',text:'#eef5ff',muted:'#9fb0c6',line:'#2e3a50',accent:'#1e3a5f',accent2:'#d4a24c',hero2:'#2b5f8c',secondary:'#243349',note:'#16283a','note-line':'#34526e',stat:'#16202f','cmd-bg':'#0b1220','cmd-text':'#d7eaff'}},
+  fel:{name:'Fel Energy',vars:{bg:'#0a0f0d',card:'#16211b',text:'#efffe9',muted:'#a6b7aa',line:'#2a3e31',accent:'#213e2c',accent2:'#6cff4d',hero2:'#2c5f39',secondary:'#1b2f23',note:'#112019','note-line':'#31503b',stat:'#111b16','cmd-bg':'#050a07','cmd-text':'#d8ffd0'}}
+};
+const UI_DEFAULTS={theme:'corporate',accent:'#1f2b67',accent2:'#c4318c',soundPreset:'soft',soundsOn:true,scrollSound:false,hapticsOn:true,volume:45};
+let uiSettings={...UI_DEFAULTS,...JSON.parse(localStorage.getItem('w11_ui_settings_v3')||'{}')};
+
 const PHASES=[
 ['A · Preparazione',[['Verifica client','Identifica il PC corretto nell’elenco client.',''],['Concorda attività','Contatta l’assegnatario del PC e concorda l’intervento.','']]],
 ['B · Pre-attività',[['Controlla spazio libero','Verifica lo spazio disponibile sul disco C:.',''],['Protezione sistema','Controlla che la protezione di C: sia attiva.',''],['Punto di ripristino','Cancella i vecchi punti e crea PR PS aaaa.mm.gg.',''],['Pulizia Disco','Esegui Pulizia Disco come amministratore.',''],['PatchCleaner','Cancella SOLO gli Orphaned files.',''],['Cartelle Temp','Rimuovi i file temporanei degli utenti.','c:\\users\\{utente}\\appdata\\local\\temp'],['Ricontrolla spazio','Sotto i 10 GB non procedere e segnala il PC.','']]],
 ['C · Check-up e aggiornamento',[['CHKDSK','Esegui il controllo disco previsto e riavvia.','chkdsk c: /r'],['SFC','Controlla i file di sistema.','sfc /scannow'],['Windows Update','Installa Windows 11 e gli aggiornamenti disponibili.',''],['Secondo controllo Update','Ripeti Windows Update dopo il riavvio.',''],['Lenovo Vantage','Solo Lenovo: installa ed esegui gli aggiornamenti suggeriti.','']]],
 ['D · Post-attività',[['Protezione sistema post','Controlla protezione e crea il punto di ripristino finale.',''],['Pulizia post','Esegui Pulizia Disco approfondita.',''],['Check-up finale','Ripeti i controlli finali.','chkdsk c: /r   →   sfc /scannow'],['Aggiorna Excel','Registra le informazioni del client.','']]]
 ];
+
 let tasks=PHASES.flatMap(p=>p[1].map((t,i)=>({phase:p[0],order:i+1,title:t[0],desc:t[1],cmd:t[2],done:false,completed:''})));
 let started=false,startAt=0,currentId='';
 const $=id=>document.getElementById(id);
@@ -94,8 +258,119 @@ function makeId(){return 'W11-'+Date.now().toString(36).toUpperCase()+'-'+Math.r
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function getSyncUrl(){return localStorage.getItem('w11_script_url')||DEFAULT_SCRIPT_URL}
 function getSyncKey(){return localStorage.getItem('w11_sync_key')||''}
-function setSyncStatus(){const c=!!getSyncUrl()&&!!getSyncKey();$('syncState').value=c?'Configurata':'Non configurata';$('syncPending').disabled=!c||loadSessions().length===0}
-async function postToScript(payload){const url=getSyncUrl();if(!url||!getSyncKey())throw new Error('Configurazione incompleta');await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})}
+
+function saveUiSettings(){localStorage.setItem('w11_ui_settings_v3',JSON.stringify(uiSettings))}
+function applyTheme(){
+  const preset=THEMES[uiSettings.theme]||THEMES.corporate;
+  Object.entries(preset.vars).forEach(([k,v])=>document.documentElement.style.setProperty('--'+k,v));
+  document.documentElement.style.setProperty('--accent',uiSettings.accent||preset.vars.accent);
+  document.documentElement.style.setProperty('--accent2',uiSettings.accent2||preset.vars.accent2);
+  $('themeColorMeta').setAttribute('content',uiSettings.accent||preset.vars.accent);
+}
+function syncUiControls(){
+  $('themePreset').value=uiSettings.theme;
+  $('soundPreset').value=uiSettings.soundPreset;
+  $('customAccent').value=uiSettings.accent;
+  $('customAccent2').value=uiSettings.accent2;
+  $('soundVolume').value=uiSettings.volume;
+  $('volumeLabel').textContent=uiSettings.volume+'%';
+  $('soundsOn').checked=!!uiSettings.soundsOn;
+  $('scrollSound').checked=!!uiSettings.scrollSound;
+  $('hapticsOn').checked=!!uiSettings.hapticsOn;
+}
+function chooseTheme(name){
+  const preset=THEMES[name]||THEMES.corporate;
+  uiSettings.theme=name;
+  uiSettings.accent=preset.vars.accent;
+  uiSettings.accent2=preset.vars.accent2;
+  saveUiSettings();applyTheme();syncUiControls();
+}
+document.querySelectorAll('[data-palette]').forEach(b=>b.addEventListener('click',()=>chooseTheme(b.dataset.palette)));
+$('themePreset').addEventListener('change',e=>chooseTheme(e.target.value));
+$('customAccent').addEventListener('input',e=>{uiSettings.accent=e.target.value;saveUiSettings();applyTheme()});
+$('customAccent2').addEventListener('input',e=>{uiSettings.accent2=e.target.value;saveUiSettings();applyTheme()});
+$('soundPreset').addEventListener('change',e=>{uiSettings.soundPreset=e.target.value;saveUiSettings()});
+$('soundVolume').addEventListener('input',e=>{uiSettings.volume=Number(e.target.value);$('volumeLabel').textContent=uiSettings.volume+'%';saveUiSettings()});
+$('soundsOn').addEventListener('change',e=>{uiSettings.soundsOn=e.target.checked;saveUiSettings()});
+$('scrollSound').addEventListener('change',e=>{uiSettings.scrollSound=e.target.checked;saveUiSettings();if(e.target.checked)unlockAudio()});
+$('hapticsOn').addEventListener('change',e=>{uiSettings.hapticsOn=e.target.checked;saveUiSettings()});
+$('resetUi').addEventListener('click',()=>{uiSettings={...UI_DEFAULTS};saveUiSettings();applyTheme();syncUiControls();feedback('reset')});
+
+let audioCtx=null;
+function unlockAudio(){
+  try{
+    if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+  }catch(e){}
+}
+function tone(freq,duration,type='sine',gain=.08,delay=0,slideTo=null){
+  if(!uiSettings.soundsOn)return;
+  unlockAudio();
+  if(!audioCtx)return;
+  const now=audioCtx.currentTime+delay;
+  const osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+  osc.type=type;osc.frequency.setValueAtTime(freq,now);
+  if(slideTo)osc.frequency.exponentialRampToValueAtTime(slideTo,now+duration);
+  const master=Math.max(0,Math.min(1,uiSettings.volume/100));
+  g.gain.setValueAtTime(0.0001,now);
+  g.gain.exponentialRampToValueAtTime(Math.max(.0002,gain*master),now+.008);
+  g.gain.exponentialRampToValueAtTime(.0001,now+duration);
+  osc.connect(g);g.connect(audioCtx.destination);osc.start(now);osc.stop(now+duration+.02);
+}
+function feedback(kind){
+  if(uiSettings.hapticsOn&&navigator.vibrate){
+    const ms=kind==='error'?35:kind==='complete'?18:10;
+    try{navigator.vibrate(ms)}catch(e){}
+  }
+  if(!uiSettings.soundsOn)return;
+  const p=uiSettings.soundPreset;
+  if(kind==='complete'){
+    if(p==='mechanical'){tone(170,.045,'square',.045);tone(610,.055,'triangle',.025,.035)}
+    else if(p==='fantasy'){tone(523,.12,'sine',.055);tone(784,.16,'sine',.045,.07)}
+    else {tone(430,.08,'sine',.055,0,560)}
+  }else if(kind==='uncheck'){
+    if(p==='mechanical')tone(145,.05,'square',.035);
+    else if(p==='fantasy')tone(392,.09,'sine',.035,0,330);
+    else tone(300,.055,'sine',.035);
+  }else if(kind==='save'){
+    if(p==='mechanical'){tone(240,.05,'square',.04);tone(480,.08,'triangle',.035,.05)}
+    else if(p==='fantasy'){tone(440,.12,'sine',.05);tone(660,.16,'sine',.04,.08);tone(880,.18,'sine',.03,.16)}
+    else {tone(520,.09,'sine',.045);tone(700,.12,'sine',.035,.07)}
+  }else if(kind==='sync'){
+    if(p==='mechanical'){tone(340,.045,'square',.04);tone(720,.07,'triangle',.03,.04)}
+    else if(p==='fantasy'){tone(659,.12,'sine',.05);tone(988,.18,'sine',.04,.08)}
+    else {tone(650,.08,'sine',.045);tone(860,.11,'sine',.035,.06)}
+  }else if(kind==='error'){
+    tone(190,.12,p==='mechanical'?'square':'sawtooth',.045,0,130);
+  }else if(kind==='reset'){
+    tone(420,.07,'sine',.03,0,300);
+  }else if(kind==='scroll'){
+    if(!audioCtx)return;
+    tone(p==='mechanical'?1100:p==='fantasy'?1450:1250,.018,p==='mechanical'?'square':'triangle',.012);
+  }else if(kind==='test'){
+    feedback('complete');
+  }
+}
+$('testSound').addEventListener('click',()=>{unlockAudio();feedback('complete')});
+document.addEventListener('pointerdown',unlockAudio,{once:true});
+
+let lastScrollY=window.scrollY,lastScrollTick=0;
+window.addEventListener('scroll',()=>{
+  if(!uiSettings.scrollSound||!uiSettings.soundsOn||!audioCtx)return;
+  const now=performance.now(),dy=Math.abs(window.scrollY-lastScrollY);
+  if(dy>18&&now-lastScrollTick>85){feedback('scroll');lastScrollTick=now;lastScrollY=window.scrollY}
+},{passive:true});
+
+function setSyncStatus(){
+  const c=!!getSyncUrl()&&!!getSyncKey();
+  $('syncState').value=c?'Configurata':'Non configurata';
+  $('syncPending').disabled=!c||loadSessions().length===0;
+}
+async function postToScript(payload){
+  const url=getSyncUrl();
+  if(!url||!getSyncKey())throw new Error('Configurazione incompleta');
+  await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+}
 function sessionPayload(s){return {key:getSyncKey(),type:'session',session:s,tasks:loadTaskArchive().filter(t=>t.sessionId===s.sessionId)}}
 async function syncPendingSessions(){
   const sessions=loadSessions();
@@ -105,21 +380,121 @@ async function syncPendingSessions(){
     for(const s of sessions){await postToScript(sessionPayload(s));s.remoteSent=true;s.remoteSentAt=new Date().toISOString()}
     saveLocal('w11_sessions_v2',sessions);
     $('syncMsg').textContent='Risincronizzazione inviata. Il registro centrale elimina automaticamente i doppioni.';
-  }catch(e){$('syncMsg').textContent='Errore: '+e.message}
+    feedback('sync');
+  }catch(e){$('syncMsg').textContent='Errore: '+e.message;feedback('error')}
   setSyncStatus();
 }
-function renderTasks(){const wrap=$('tasks');wrap.innerHTML='';PHASES.forEach(p=>{const box=document.createElement('section');box.className='card';box.innerHTML='<b>'+esc(p[0])+'</b>';tasks.filter(t=>t.phase===p[0]).forEach(t=>{const idx=tasks.indexOf(t),row=document.createElement('label');row.className='task'+(t.done?' done':'');row.dataset.idx=idx;row.innerHTML='<input type="checkbox" '+(t.done?'checked':'')+' '+(!started?'disabled':'')+'><div class="body"><div class="title"><b>'+esc(t.title)+'</b></div><div class="small">'+esc(t.desc)+'</div>'+(t.cmd?'<span class="cmd">'+esc(t.cmd)+'</span>':'')+'</div><div class="small">'+esc(t.completed)+'</div>';row.querySelector('input').addEventListener('change',e=>{t.done=e.target.checked;t.completed=t.done?stamp():'';renderTasks()});box.appendChild(row)});wrap.appendChild(box)});update()}
-function update(){const done=tasks.filter(t=>t.done).length,p=Math.round(done/tasks.length*100);$('pct').textContent=p+'%';$('count').textContent=done+' / '+tasks.length;$('bar').style.width=p+'%';$('savedCount').textContent=loadSessions().length;document.querySelectorAll('.task').forEach(r=>r.classList.remove('current'));const idx=tasks.findIndex(t=>!t.done);if(started&&idx>=0){$('next').textContent=tasks[idx].title+' — '+tasks[idx].desc;const r=document.querySelector('[data-idx="'+idx+'"]');if(r)r.classList.add('current')}else if(started){$('next').textContent='Tutte le task completate. Salva la sessione.'}}
-$('startBtn').addEventListener('click',()=>{if(!$('pc').value.trim()||!$('operator').value.trim()){$('msg').textContent='Inserisci nome host e operatore.';return}started=true;startAt=Date.now();currentId=makeId();$('saveBtn').disabled=false;$('msg').textContent='Sessione '+currentId+' avviata.';renderTasks()});
-$('saveSyncConfig').addEventListener('click',()=>{const u=$('scriptUrl').value.trim()||DEFAULT_SCRIPT_URL,k=$('syncKey').value.trim();if(!k){$('syncMsg').textContent='Inserisci la chiave di sincronizzazione.';return}localStorage.setItem('w11_script_url',u);localStorage.setItem('w11_sync_key',k);$('scriptUrl').value=u;$('syncMsg').textContent='Configurazione salvata.';setSyncStatus()});
-$('testSync').addEventListener('click',async()=>{const u=$('scriptUrl').value.trim()||DEFAULT_SCRIPT_URL,k=$('syncKey').value.trim();if(u)localStorage.setItem('w11_script_url',u);if(k)localStorage.setItem('w11_sync_key',k);try{await postToScript({key:getSyncKey(),type:'ping',sentAt:new Date().toISOString()});$('syncMsg').textContent='Richiesta test inviata.'}catch(e){$('syncMsg').textContent='Errore: '+e.message}});
+function renderTasks(){
+  const wrap=$('tasks');wrap.innerHTML='';
+  PHASES.forEach(p=>{
+    const box=document.createElement('section');box.className='card';box.innerHTML='<b>'+esc(p[0])+'</b>';
+    tasks.filter(t=>t.phase===p[0]).forEach(t=>{
+      const idx=tasks.indexOf(t),row=document.createElement('label');
+      row.className='task'+(t.done?' done':'');row.dataset.idx=idx;
+      row.innerHTML='<input type="checkbox" '+(t.done?'checked':'')+' '+(!started?'disabled':'')+'><div class="body"><div class="title"><b>'+esc(t.title)+'</b></div><div class="small">'+esc(t.desc)+'</div>'+(t.cmd?'<span class="cmd">'+esc(t.cmd)+'</span>':'')+'</div><div class="small">'+esc(t.completed)+'</div>';
+      row.querySelector('input').addEventListener('change',e=>{
+        t.done=e.target.checked;t.completed=t.done?stamp():'';
+        feedback(t.done?'complete':'uncheck');
+        renderTasks();
+      });
+      box.appendChild(row);
+    });
+    wrap.appendChild(box);
+  });
+  update();
+}
+function update(){
+  const done=tasks.filter(t=>t.done).length,p=Math.round(done/tasks.length*100);
+  $('pct').textContent=p+'%';$('count').textContent=done+' / '+tasks.length;$('bar').style.width=p+'%';
+  $('savedCount').textContent=loadSessions().length;
+  document.querySelectorAll('.task').forEach(r=>r.classList.remove('current'));
+  const idx=tasks.findIndex(t=>!t.done);
+  if(started&&idx>=0){
+    $('next').textContent=tasks[idx].title+' — '+tasks[idx].desc;
+    const r=document.querySelector('[data-idx="'+idx+'"]');if(r)r.classList.add('current');
+  }else if(started){$('next').textContent='Tutte le task completate. Salva la sessione.'}
+}
+$('startBtn').addEventListener('click',()=>{
+  unlockAudio();
+  if(!$('pc').value.trim()||!$('operator').value.trim()){$('msg').textContent='Inserisci nome host e operatore.';feedback('error');return}
+  started=true;startAt=Date.now();currentId=makeId();$('saveBtn').disabled=false;
+  $('msg').textContent='Sessione '+currentId+' avviata.';renderTasks();
+});
+$('saveSyncConfig').addEventListener('click',()=>{
+  const u=$('scriptUrl').value.trim()||DEFAULT_SCRIPT_URL,k=$('syncKey').value.trim();
+  if(!k){$('syncMsg').textContent='Inserisci la chiave di sincronizzazione.';feedback('error');return}
+  localStorage.setItem('w11_script_url',u);localStorage.setItem('w11_sync_key',k);
+  $('scriptUrl').value=u;$('syncMsg').textContent='Configurazione salvata.';setSyncStatus();feedback('save');
+});
+$('testSync').addEventListener('click',async()=>{
+  const u=$('scriptUrl').value.trim()||DEFAULT_SCRIPT_URL,k=$('syncKey').value.trim();
+  if(u)localStorage.setItem('w11_script_url',u);if(k)localStorage.setItem('w11_sync_key',k);
+  try{
+    await postToScript({key:getSyncKey(),type:'ping',sentAt:new Date().toISOString()});
+    $('syncMsg').textContent='Richiesta test inviata.';feedback('sync');
+  }catch(e){$('syncMsg').textContent='Errore: '+e.message;feedback('error')}
+});
 $('syncPending').addEventListener('click',syncPendingSessions);
-$('saveBtn').addEventListener('click',async()=>{if(!started)return;const done=tasks.filter(t=>t.done).length,now=new Date();const rec={sessionId:currentId,pc:$('pc').value.trim(),date:new Date(startAt).toLocaleDateString('it-IT'),start:new Date(startAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),end:now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),completed:done,total:tasks.length,completion:(done/tasks.length).toFixed(4),outcome:$('outcome').value,reason:$('outcome').value==='Bloccato'?$('notes').value.trim():'',operator:$('operator').value.trim(),notes:$('notes').value.trim(),anydeskId:$('anydeskId').value.trim(),autoAccess:$('autoAccess').value,remoteSent:false};const sessions=loadSessions();sessions.push(rec);saveLocal('w11_sessions_v2',sessions);const archive=loadTaskArchive();tasks.forEach(t=>archive.push({sessionId:currentId,pc:rec.pc,phase:t.phase,order:t.order,task:t.title,status:t.done?'Completato':'Non completato',completedAt:t.completed,command:t.cmd,note:rec.notes}));saveLocal('w11_task_archive_v2',archive);$('anydeskPassword').value='';$('saveBtn').disabled=true;$('exportSessions').disabled=false;$('exportTasks').disabled=false;$('saveMsg').textContent='Sessione salvata sul dispositivo.';if(getSyncUrl()&&getSyncKey()){try{await postToScript(sessionPayload(rec));rec.remoteSent=true;const upd=loadSessions().map(x=>x.sessionId===rec.sessionId?rec:x);saveLocal('w11_sessions_v2',upd);$('saveMsg').textContent='Sessione salvata; richiesta di sincronizzazione inviata al registro Google Sheets.'}catch(e){$('saveMsg').textContent='Salvata in locale, invio non riuscito: '+e.message}}update();setSyncStatus();});
-function csvDownload(name,headers,rows){const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const txt='\uFEFF'+[headers,...rows].map(r=>r.map(q).join(';')).join('\r\n');const blob=new Blob([txt],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-$('exportSessions').addEventListener('click',()=>{const rows=loadSessions().map(x=>[x.sessionId,x.pc,x.date,x.start,x.end,x.completed,x.total,x.completion,x.outcome,x.reason,x.operator,x.notes,x.anydeskId,x.autoAccess]);csvDownload('Registro_sessioni_W11.csv',['Session ID','Nome host','Data','Ora inizio','Ora fine','Task completate','Task totali','Completamento %','Esito','Motivo blocco','Operatore','Note','ID AnyDesk','Accesso automatico configurato'],rows)});
-$('exportTasks').addEventListener('click',()=>{const rows=loadTaskArchive().map(t=>[t.sessionId,t.pc,t.phase,t.order,t.task,t.status,t.completedAt,t.command,t.note]);csvDownload('Dettaglio_task_W11.csv',['Session ID','Nome host','Fase','Ordine','Task','Stato','Ora completamento','Comando','Nota / anomalia'],rows)});
-$('resetBtn').addEventListener('click',()=>{started=false;startAt=0;currentId='';tasks.forEach(t=>{t.done=false;t.completed=''});$('pc').value='';$('anydeskId').value='';$('anydeskPassword').value='';$('notes').value='';$('saveBtn').disabled=true;$('next').textContent='Inserisci i dati del PC e avvia.';renderTasks()});
-(function(){ $('scriptUrl').value=getSyncUrl();$('syncKey').value=getSyncKey();const has=loadSessions().length>0;$('exportSessions').disabled=!has;$('exportTasks').disabled=loadTaskArchive().length===0;renderTasks();setSyncStatus();if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})})();
+
+$('saveBtn').addEventListener('click',async()=>{
+  if(!started)return;
+  const done=tasks.filter(t=>t.done).length,now=new Date();
+  const rec={
+    sessionId:currentId,pc:$('pc').value.trim(),
+    date:new Date(startAt).toLocaleDateString('it-IT'),
+    start:new Date(startAt).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),
+    end:now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),
+    completed:done,total:tasks.length,completion:(done/tasks.length).toFixed(4),
+    outcome:$('outcome').value,
+    reason:$('outcome').value==='Bloccato'?$('notes').value.trim():'',
+    operator:$('operator').value.trim(),notes:$('notes').value.trim(),
+    anydeskId:$('anydeskId').value.trim(),autoAccess:$('autoAccess').value,remoteSent:false
+  };
+  const sessions=loadSessions();sessions.push(rec);saveLocal('w11_sessions_v2',sessions);
+  const archive=loadTaskArchive();
+  tasks.forEach(t=>archive.push({sessionId:currentId,pc:rec.pc,phase:t.phase,order:t.order,task:t.title,status:t.done?'Completato':'Non completato',completedAt:t.completed,command:t.cmd,note:rec.notes}));
+  saveLocal('w11_task_archive_v2',archive);
+  $('anydeskPassword').value='';$('saveBtn').disabled=true;$('exportSessions').disabled=false;$('exportTasks').disabled=false;
+  $('saveMsg').textContent='Sessione salvata sul dispositivo.';feedback('save');
+  if(getSyncUrl()&&getSyncKey()){
+    try{
+      await postToScript(sessionPayload(rec));rec.remoteSent=true;rec.remoteSentAt=new Date().toISOString();
+      const upd=loadSessions().map(x=>x.sessionId===rec.sessionId?rec:x);saveLocal('w11_sessions_v2',upd);
+      $('saveMsg').textContent='Sessione salvata e inviata al registro Google Sheets.';feedback('sync');
+    }catch(e){$('saveMsg').textContent='Salvata in locale, invio non riuscito: '+e.message;feedback('error')}
+  }
+  update();setSyncStatus();
+});
+
+function csvDownload(name,headers,rows){
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const txt='\uFEFF'+[headers,...rows].map(r=>r.map(q).join(';')).join('\r\n');
+  const blob=new Blob([txt],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$('exportSessions').addEventListener('click',()=>{
+  const rows=loadSessions().map(x=>[x.sessionId,x.pc,x.date,x.start,x.end,x.completed,x.total,x.completion,x.outcome,x.reason,x.operator,x.notes,x.anydeskId,x.autoAccess]);
+  csvDownload('Registro_sessioni_W11.csv',['Session ID','Nome host','Data','Ora inizio','Ora fine','Task completate','Task totali','Completamento %','Esito','Motivo blocco','Operatore','Note','ID AnyDesk','Accesso automatico configurato'],rows);
+});
+$('exportTasks').addEventListener('click',()=>{
+  const rows=loadTaskArchive().map(t=>[t.sessionId,t.pc,t.phase,t.order,t.task,t.status,t.completedAt,t.command,t.note]);
+  csvDownload('Dettaglio_task_W11.csv',['Session ID','Nome host','Fase','Ordine','Task','Stato','Ora completamento','Comando','Nota / anomalia'],rows);
+});
+$('resetBtn').addEventListener('click',()=>{
+  started=false;startAt=0;currentId='';tasks.forEach(t=>{t.done=false;t.completed=''});
+  $('pc').value='';$('anydeskId').value='';$('anydeskPassword').value='';$('notes').value='';
+  $('saveBtn').disabled=true;$('next').textContent='Inserisci i dati del PC e avvia.';
+  feedback('reset');renderTasks();
+});
+
+(function(){
+  applyTheme();syncUiControls();
+  $('scriptUrl').value=getSyncUrl();$('syncKey').value=getSyncKey();
+  const has=loadSessions().length>0;
+  $('exportSessions').disabled=!has;$('exportTasks').disabled=loadTaskArchive().length===0;
+  renderTasks();setSyncStatus();
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+})();
 </script>
 </body>
 </html>
