@@ -1,0 +1,39 @@
+W11 Upgrade Assistant + Google Sheets
+
+IL FOGLIO GOOGLE È GIÀ STATO CREATO:
+Registro Upgrade Windows 11 - PWA
+Spreadsheet ID:
+1evv8hbTsu9Z988YmgqXmLG5LDMxP7pUhIJFiZoLQ_6U
+
+COSA MANCA UNA SOLA VOLTA
+Per motivi di sicurezza Google non permette di inventare automaticamente le credenziali OAuth di una web app.
+Devi creare un OAuth Client ID nel tuo Google Cloud:
+
+1. Vai in Google Cloud Console e crea/seleziona un progetto.
+2. Abilita "Google Sheets API".
+3. Apri Google Auth Platform e configura la schermata di consenso.
+   - Se usi Google Workspace aziendale e l'app serve solo internamente, puoi scegliere Internal.
+4. Crea un Client OAuth:
+   - Tipo: Web application.
+   - In "Authorized JavaScript origins" inserisci ESATTAMENTE l'indirizzo HTTPS su cui pubblicherai la PWA.
+     Esempio: https://tuonome.github.io
+5. Copia il Client ID che termina in:
+   .apps.googleusercontent.com
+
+NELLA PWA
+1. Apri l'app.
+2. Nel riquadro "Google Sheets" incolla il Client ID.
+3. Premi "Salva configurazione".
+4. Premi "Accedi con Google".
+5. Concedi l'accesso richiesto a Google Sheets.
+6. Da quel momento "Salva sessione" salva prima sul telefono e prova subito a scrivere nel foglio Google.
+7. Se sei offline o l'accesso Google è scaduto, nulla va perso: la sessione resta locale e puoi usare "Sincronizza dati locali" in seguito.
+
+SICUREZZA
+- La password AnyDesk NON viene archiviata né inviata a Google Sheets.
+- L'ID AnyDesk e il flag "Accesso automatico configurato" vengono registrati.
+- Il token Google viene mantenuto solo in memoria durante l'uso dell'app.
+- Il Client ID OAuth non è una password e può essere conservato nella configurazione della PWA.
+
+NOTA
+La PWA deve essere pubblicata via HTTPS per essere installabile e per il flusso OAuth Google.
