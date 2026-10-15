@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "W11 Upgrade Assistant",
+  "version": "0.1.0",
+  "identifier": "com.v0rtecs.w11upgradeassistant",
+  "build": {
+    "beforeBuildCommand": "node scripts/copy-frontend.mjs",
+    "beforeDevCommand": "node scripts/copy-frontend.mjs",
+    "frontendDist": "../web"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "W11 Upgrade Assistant",
+        "width": 980,
+        "height": 900,
+        "minWidth": 720,
+        "minHeight": 640,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}
