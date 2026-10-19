@@ -1,5 +1,6 @@
 const SHEET_ID = '1evv8hbTsu9Z988YmgqXmLG5LDMxP7pUhIJFiZoLQ_6U';
 const SYNC_KEY = 'CAMBIA-QUESTA-CHIAVE';
+const MONITOR_SHEET = 'PC Monitor';
 
 function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true})).setMimeType(ContentService.MimeType.JSON);
@@ -12,6 +13,11 @@ function doPost(e) {
     if (body.type === 'ping') return json_({ok:true,pong:true});
 
     const ss = SpreadsheetApp.openById(SHEET_ID);
+
+    // Automatic PC monitor heartbeat. Kept separate from the existing
+    // checklist/session data so the two functions can evolve independently.
+    if (body.type === 'heartbeat') return handleHeartbeat_(ss, body);
+
     const sessions = ss.getSheetByName('PC Sessions');
     const taskLog = ss.getSheetByName('Task Log');
     const s = body.session || {};
@@ -43,6 +49,52 @@ function doPost(e) {
   } catch (err) {
     return json_({ok:false,error:String(err)});
   }
+}
+
+function handleHeartbeat_(ss, body) {
+  const agentId = String(body.agentId || '').trim();
+  if (!agentId) return json_({ok:false,error:'missing_agent_id'});
+
+  const sheet = getOrCreateMonitorSheet_(ss);
+  const now = new Date();
+  const row = findAgentRow_(sheet, agentId);
+  const values = [[
+    agentId,
+    String(body.hostName || ''),
+    String(body.agentVersion || ''),
+    String(body.status || 'ONLINE'),
+    now,
+    String(body.timestampUtc || ''),
+    String(body.bootTimeUtc || ''),
+    String(body.windows || ''),
+    String(body.build || '')
+  ]];
+
+  if (row) sheet.getRange(row, 1, 1, values[0].length).setValues(values);
+  else sheet.getRange(sheet.getLastRow() + 1, 1, 1, values[0].length).setValues(values);
+
+  return json_({ok:true,agentId:agentId,serverTimeUtc:now.toISOString()});
+}
+
+function getOrCreateMonitorSheet_(ss) {
+  let sheet = ss.getSheetByName(MONITOR_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(MONITOR_SHEET);
+    sheet.appendRow([
+      'Agent ID','PC','Agent Version','Stato','Ultimo contatto server',
+      'Timestamp Agent UTC','Boot UTC','Windows','Build'
+    ]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function findAgentRow_(sheet, agentId) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const ids = sheet.getRange(2,1,last-1,1).getDisplayValues().flat();
+  const index = ids.indexOf(agentId);
+  return index < 0 ? 0 : index + 2;
 }
 
 function sessionExists_(sheet, sessionId) {
