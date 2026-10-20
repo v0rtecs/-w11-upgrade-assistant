@@ -1,6 +1,7 @@
 const SHEET_ID = '1evv8hbTsu9Z988YmgqXmLG5LDMxP7pUhIJFiZoLQ_6U';
 const SYNC_KEY = 'CAMBIA-QUESTA-CHIAVE';
 const MONITOR_SHEET = 'PC Monitor';
+const MONITOR_KEY_PROPERTY = 'MONITOR_AGENT_KEY';
 
 function doGet() {
   return ContentService.createTextOutput(JSON.stringify({ok:true})).setMimeType(ContentService.MimeType.JSON);
@@ -9,15 +10,20 @@ function doGet() {
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents || '{}');
+
+    // Heartbeats use a dedicated Agent credential stored in Apps Script
+    // Properties, not the PWA synchronization key and not the source code.
+    if (body.type === 'heartbeat') {
+      if (!isMonitorAuthorized_(body)) return json_({ok:false,error:'unauthorized_agent'});
+      const ss = SpreadsheetApp.openById(SHEET_ID);
+      return handleHeartbeat_(ss, body);
+    }
+
+    // Existing PWA/checklist traffic keeps its current authentication.
     if (body.key !== SYNC_KEY) return json_({ok:false,error:'unauthorized'});
     if (body.type === 'ping') return json_({ok:true,pong:true});
 
     const ss = SpreadsheetApp.openById(SHEET_ID);
-
-    // Automatic PC monitor heartbeat. Kept separate from the existing
-    // checklist/session data so the two functions can evolve independently.
-    if (body.type === 'heartbeat') return handleHeartbeat_(ss, body);
-
     const sessions = ss.getSheetByName('PC Sessions');
     const taskLog = ss.getSheetByName('Task Log');
     const s = body.session || {};
@@ -49,6 +55,13 @@ function doPost(e) {
   } catch (err) {
     return json_({ok:false,error:String(err)});
   }
+}
+
+function isMonitorAuthorized_(body) {
+  const expected = PropertiesService.getScriptProperties().getProperty(MONITOR_KEY_PROPERTY);
+  if (!expected) return false; // fail closed until configured
+  const supplied = String(body.agentKey || '');
+  return supplied.length > 0 && supplied === expected;
 }
 
 function handleHeartbeat_(ss, body) {
