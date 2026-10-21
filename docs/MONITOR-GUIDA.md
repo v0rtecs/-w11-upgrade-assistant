@@ -2,68 +2,65 @@
 
 ## Dove siamo arrivati
 
-La PWA esistente continua a gestire la checklist operativa e Google Sheets. Il Monitor ha ora un vero ponte di rete: `agent/W11MonitorAgent.ps1` v0.2 sa inviare gli heartbeat al backend Apps Script e `Code.gs` sa autenticarli con una credenziale dedicata.
-
-La catena è quindi diventata:
+La catena tecnica è ora:
 
 `Windows → Agent → HTTPS → Apps Script → PC Monitor`
 
-La dashboard LIVE sul telefono è il prossimo anello.
+In più abbiamo risolto un punto essenziale: **l'Agent può partire da solo ad ogni avvio di Windows**, senza login dell'utente e senza che qualcuno debba aprire PowerShell.
 
 ## Che cos'è l'Agent
 
 È un piccolo programma che gira sul PC da monitorare. Non sostituisce AnyDesk e non controlla il computer: osserva e comunica.
 
-Ogni PC riceve al primo avvio un identificativo permanente, per esempio `GG-7F3A91C2`. Viene conservato in `C:\ProgramData\W11UpgradeAssistant\agent.json`, quindi il PC rimane riconoscibile anche se il suo nome Windows cambia.
+Ogni PC riceve al primo avvio un identificativo permanente, per esempio `GG-7F3A91C2`, conservato in `C:\ProgramData\W11UpgradeAssistant\agent.json`.
 
 ## Il battito: heartbeat
 
-Ogni 30 secondi l'Agent invia un messaggio molto piccolo con Agent ID, versione Agent, nome PC, stato, data e ora, ultimo avvio di Windows, edizione e build di Windows.
+Ogni 30 secondi l'Agent invia un piccolo messaggio con Agent ID, versione Agent, nome PC, stato, data e ora, ultimo avvio di Windows, edizione e build di Windows.
 
 È l'equivalente del PC che telefona alla centrale e dice: «Sono GG-7F3A91C2, sono COORD-OSS, sono acceso e questo è il mio stato».
 
-## La novità della v0.2: il ponte è reale
+## Novità: avvio automatico
 
-La v0.1 costruiva il messaggio ma lo mostrava soltanto localmente. La v0.2 usa HTTPS per spedirlo davvero all'endpoint Apps Script configurato.
+Il file `agent/Install-W11MonitorAgent.ps1` prepara il PC pilota. Copia l'Agent in `C:\ProgramData\W11UpgradeAssistant`, crea la configurazione e registra una Attività pianificata di Windows chiamata `W11 Upgrade Assistant Monitor`.
+
+L'attività parte **AtStartup**, cioè quando parte Windows, e gira con l'account di sistema `SYSTEM`. Questo è importante: non dobbiamo aspettare che Pietro o un collega faccia login.
+
+In italiano normale: prima il nostro addetto al monitoraggio doveva essere chiamato manualmente. Adesso ha la sveglia incorporata. Appena Windows si alza, si alza anche lui.
+
+L'installer avvia inoltre subito l'Agent, quindi per il primo test non serve riavviare il PC.
+
+## Perché usiamo un'Attività pianificata
+
+Per il prototipo è più semplice e trasparente di costruire subito un vero Windows Service. Windows la gestisce nativamente, può eseguirla come SYSTEM e può rilanciarla se il processo termina.
+
+La configurazione prevede fino a 5 tentativi di riavvio del processo, distanziati di un minuto. L'Agent non ha un limite di durata imposto dal task.
+
+Se in seguito vorremo trasformarlo in un servizio Windows vero e proprio, potremo farlo senza cambiare il protocollo heartbeat o il backend.
+
+## Protezione della chiave Agent
 
 La configurazione locale vive in:
 
 `C:\ProgramData\W11UpgradeAssistant\monitor-config.json`
 
-Formato previsto:
+Contiene endpoint HTTPS e chiave Agent. L'installer restringe i permessi del file a `SYSTEM` e agli amministratori locali, così un normale utente del PC non dovrebbe poter leggere la credenziale.
 
-```json
-{
-  "endpoint": "URL-DELLA-WEB-APP-APPS-SCRIPT",
-  "agentKey": "CHIAVE-AGENT-GENERATA-IN-MODO-CASUALE"
-}
-```
+La chiave reale non deve mai essere salvata nel repository GitHub.
 
-La chiave reale NON deve essere salvata nel repository GitHub.
-
-## Perché abbiamo due chiavi
-
-La PWA e gli Agent sono due cose diverse. La PWA continua a usare la propria chiave di sincronizzazione. Gli Agent usano invece `MONITOR_AGENT_KEY`.
-
-Nel backend la chiave Agent non viene scritta nel sorgente `Code.gs`: viene conservata nelle Script Properties di Apps Script. Questo evita di pubblicare una credenziale nel repository.
-
-In italiano normale: è come avere una chiave per la porta dell'ufficio e una diversa per il locale tecnico. Se una viene cambiata, non dobbiamo necessariamente cambiare anche l'altra.
-
-Il backend inoltre lavora in modalità fail-closed: se `MONITOR_AGENT_KEY` non è stata configurata, rifiuta tutti gli heartbeat invece di accettarli senza controllo.
+Il backend conserva `MONITOR_AGENT_KEY` nelle Script Properties di Apps Script e lavora in modalità fail-closed: se la chiave non è configurata, rifiuta gli heartbeat.
 
 ## Cosa succede se Internet non è pronto dopo il riavvio
 
-Questo è un dettaglio importante. Windows può essere già partito mentre Wi-Fi/LAN o DNS non sono ancora pronti.
+Se il primo heartbeat fallisce, l'Agent non si chiude: registra l'errore e riprova dopo 30 secondi.
 
-Se il primo heartbeat fallisce, l'Agent NON si chiude. Scrive l'errore nel log locale e riprova dopo 30 secondi.
+Se deve comunicare `ONLINE_AFTER_REBOOT`, conserva quello stato finché il backend non lo riceve con successo. Solo dopo passa a `ONLINE`.
 
-Ancora più importante: se deve comunicare `ONLINE_AFTER_REBOOT`, conserva quello stato finché il backend non lo riceve con successo. Solo dopo passa a `ONLINE`.
-
-Così non perdiamo l'informazione più importante proprio perché la rete si è svegliata dieci secondi dopo Windows.
+Questo evita di perdere l'informazione del rientro solo perché LAN, Wi-Fi o DNS si sono avviati qualche secondo dopo Windows.
 
 ## Log locale
 
-Per diagnosticare un PC senza indovinare, l'Agent scrive un piccolo log in:
+Il log è:
 
 `C:\ProgramData\W11UpgradeAssistant\monitor-agent.log`
 
@@ -71,38 +68,42 @@ Registra avvio, heartbeat riusciti ed errori di collegamento. La chiave Agent no
 
 ## Dove finiscono i battiti
 
-Il backend usa il foglio separato `PC Monitor`. Ogni Agent occupa una sola riga: un nuovo heartbeat aggiorna la stessa riga invece di aggiungerne una ogni 30 secondi.
+Il backend usa il foglio `PC Monitor`. Ogni Agent occupa una sola riga; un nuovo heartbeat aggiorna quella riga invece di aggiungerne una ogni 30 secondi.
 
-Le colonne sono:
+Le colonne previste sono:
 
 `Agent ID | PC | Agent Version | Stato | Ultimo contatto server | Timestamp Agent UTC | Boot UTC | Windows | Build`
 
-`Ultimo contatto server` viene scritto dal backend, non dal PC. Così un orologio Windows sbagliato non altera lo stato LIVE.
+L'ultimo contatto viene stabilito dal server, non dall'orologio del PC.
 
 ## Come riconosce un riavvio
 
-L'Agent salva l'ultimo boot in `C:\ProgramData\W11UpgradeAssistant\state.json`. Quando riparte confronta il boot precedente con quello attuale. Se sono diversi, invia `ONLINE_AFTER_REBOOT`.
+L'Agent salva l'ultimo boot in `C:\ProgramData\W11UpgradeAssistant\state.json`. Quando riparte confronta il boot precedente con quello attuale. Se sono diversi invia `ONLINE_AFTER_REBOOT`.
 
-Questo ci permette di distinguere un PC che torna dopo un vero riavvio da un normale heartbeat.
+## Come installeremo il PC pilota
 
-## Cosa manca prima del primo test reale
+Quando endpoint Apps Script e `MONITOR_AGENT_KEY` saranno pronti, da PowerShell aperto come amministratore useremo l'installer passando quei due valori. L'installer controlla che l'endpoint sia HTTPS e che la chiave abbia almeno 24 caratteri.
 
-Servono tre operazioni di configurazione, non nuovo codice:
+Il risultato atteso è:
 
-1. impostare `MONITOR_AGENT_KEY` nelle Script Properties del progetto Apps Script;
-2. distribuire/deployare la nuova versione di `Code.gs` come Web App;
-3. creare `monitor-config.json` su un solo PC pilota con URL Web App e chiave Agent.
+`Avvio Windows → Task SYSTEM → Agent → heartbeat → Apps Script → PC Monitor`
 
-Solo dopo conviene installare l'Agent come servizio/attività automatica. Prima testeremo un singolo PC, così qualsiasi errore resta circoscritto.
+Da quel momento l'Agent non dipende più dall'utente collegato al PC.
 
-## Per Pietro: cosa abbiamo ottenuto oggi
+## Cosa manca
 
-Prima avevamo costruito due telefoni che non erano ancora collegati. L'Agent sapeva cosa dire e il backend sapeva cosa ascoltare, ma tra i due mancava la linea.
+Prima del test reale dobbiamo ancora:
 
-Ora la linea esiste ed è protetta da una chiave dedicata.
+1. impostare `MONITOR_AGENT_KEY` nelle Script Properties di Apps Script;
+2. deployare il backend aggiornato come Web App;
+3. eseguire l'installer su un solo PC pilota;
+4. verificare heartbeat e rientro dopo un riavvio reale;
+5. costruire la schermata LIVE della PWA con stati verde/arancione/rosso.
 
-Quando faremo il test pilota, il risultato atteso sarà molto semplice:
+## Per Pietro: cosa abbiamo ottenuto con questo passo
 
-`COORD-OSS → heartbeat → Apps Script → riga PC Monitor aggiornata`
+Questa modifica sembra piccola, ma è fondamentale per il progetto.
 
-Da lì potremo finalmente costruire la schermata del telefono con pallini verdi, arancioni e rossi basati su dati reali.
+Se il monitor richiedesse di aprire manualmente un programma dopo ogni reboot, non potrebbe mai controllare seriamente i reboot di Windows Update.
+
+Ora invece Windows può riavviarsi, arrivare alla schermata di accesso senza che nessuno tocchi il PC e l'Agent è già in funzione. È esattamente il comportamento necessario per poter dire dal telefono: «questo PC è tornato vivo».
