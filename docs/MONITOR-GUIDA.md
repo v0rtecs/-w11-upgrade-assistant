@@ -2,108 +2,86 @@
 
 ## Dove siamo arrivati
 
-La catena tecnica è ora:
+La catena tecnica è:
 
 `Windows → Agent → HTTPS → Apps Script → PC Monitor`
 
-In più abbiamo risolto un punto essenziale: **l'Agent può partire da solo ad ogni avvio di Windows**, senza login dell'utente e senza che qualcuno debba aprire PowerShell.
+L'Agent parte automaticamente con Windows, senza login, e dalla versione 0.3 riconosce anche quando **Windows Update ha già stabilito che serve un riavvio**.
 
 ## Che cos'è l'Agent
 
-È un piccolo programma che gira sul PC da monitorare. Non sostituisce AnyDesk e non controlla il computer: osserva e comunica.
+È un piccolo programma che gira sul PC da monitorare. Non sostituisce AnyDesk e non controlla il computer: osserva e comunica. Ogni PC riceve un Agent ID permanente, per esempio `GG-7F3A91C2`, conservato in `C:\ProgramData\W11UpgradeAssistant\agent.json`.
 
-Ogni PC riceve al primo avvio un identificativo permanente, per esempio `GG-7F3A91C2`, conservato in `C:\ProgramData\W11UpgradeAssistant\agent.json`.
+## Heartbeat
 
-## Il battito: heartbeat
+Ogni 30 secondi l'Agent invia Agent ID, versione, nome PC, stato, data/ora, ultimo avvio di Windows, edizione e build. È come se il PC telefonasse alla centrale dicendo: «Sono questo PC, sono vivo e questo è il mio stato».
 
-Ogni 30 secondi l'Agent invia un piccolo messaggio con Agent ID, versione Agent, nome PC, stato, data e ora, ultimo avvio di Windows, edizione e build di Windows.
+## Novità v0.3: REBOOT_PENDING
 
-È l'equivalente del PC che telefona alla centrale e dice: «Sono GG-7F3A91C2, sono COORD-OSS, sono acceso e questo è il mio stato».
+L'Agent controlla il segnale `WindowsUpdate\Auto Update\RebootRequired` nel registro di Windows. Quando Windows Update crea questo indicatore, il monitor passa da:
 
-## Novità: avvio automatico
+`ONLINE`
 
-Il file `agent/Install-W11MonitorAgent.ps1` prepara il PC pilota. Copia l'Agent in `C:\ProgramData\W11UpgradeAssistant`, crea la configurazione e registra una Attività pianificata di Windows chiamata `W11 Upgrade Assistant Monitor`.
+a:
 
-L'attività parte **AtStartup**, cioè quando parte Windows, e gira con l'account di sistema `SYSTEM`. Questo è importante: non dobbiamo aspettare che Pietro o un collega faccia login.
+`REBOOT_PENDING`
 
-In italiano normale: prima il nostro addetto al monitoraggio doveva essere chiamato manualmente. Adesso ha la sveglia incorporata. Appena Windows si alza, si alza anche lui.
+senza aspettare che il PC si spenga.
 
-L'installer avvia inoltre subito l'Agent, quindi per il primo test non serve riavviare il PC.
+In italiano normale: prima sapevamo che il PC si era riavviato soltanto quando lo vedevamo tornare. Adesso riusciamo anche a sentirgli dire prima: **«Ho finito una fase dell'aggiornamento e Windows Update vuole che mi riavvii.»**
 
-## Perché usiamo un'Attività pianificata
+Questo è prezioso perché, se poco dopo spariscono gli heartbeat, il backend avrà un forte indizio che l'assenza è collegata all'aggiornamento e non a un cavo staccato o a uno spegnimento casuale.
 
-Per il prototipo è più semplice e trasparente di costruire subito un vero Windows Service. Windows la gestisce nativamente, può eseguirla come SYSTEM e può rilanciarla se il processo termina.
+Abbiamo scelto volutamente un segnale conservativo: per ora `REBOOT_PENDING` riguarda il marcatore specifico di Windows Update. Non etichettiamo automaticamente come aggiornamento ogni generica richiesta di reboot di Windows.
 
-La configurazione prevede fino a 5 tentativi di riavvio del processo, distanziati di un minuto. L'Agent non ha un limite di durata imposto dal task.
+## Avvio automatico
 
-Se in seguito vorremo trasformarlo in un servizio Windows vero e proprio, potremo farlo senza cambiare il protocollo heartbeat o il backend.
+`agent/Install-W11MonitorAgent.ps1` prepara `C:\ProgramData\W11UpgradeAssistant`, configura l'Agent e registra l'attività `W11 Upgrade Assistant Monitor`, eseguita AtStartup come SYSTEM. Non dobbiamo aspettare il login di un utente.
 
-## Protezione della chiave Agent
+## Protezione della chiave
 
-La configurazione locale vive in:
+`C:\ProgramData\W11UpgradeAssistant\monitor-config.json` contiene endpoint HTTPS e chiave Agent. I permessi vengono limitati a SYSTEM e amministratori locali. La chiave reale non va salvata su GitHub; il backend conserva `MONITOR_AGENT_KEY` nelle Script Properties.
 
-`C:\ProgramData\W11UpgradeAssistant\monitor-config.json`
+## Dopo un riavvio
 
-Contiene endpoint HTTPS e chiave Agent. L'installer restringe i permessi del file a `SYSTEM` e agli amministratori locali, così un normale utente del PC non dovrebbe poter leggere la credenziale.
+L'Agent confronta il boot precedente con quello attuale. Se sono diversi, invia `ONLINE_AFTER_REBOOT`. Se la rete non è ancora pronta, continua a riprovare questo stato finché il server non lo riceve, poi torna alla rilevazione LIVE.
 
-La chiave reale non deve mai essere salvata nel repository GitHub.
+La sequenza che vogliamo osservare diventa quindi:
 
-Il backend conserva `MONITOR_AGENT_KEY` nelle Script Properties di Apps Script e lavora in modalità fail-closed: se la chiave non è configurata, rifiuta gli heartbeat.
+`ONLINE → REBOOT_PENDING → [heartbeat assente durante reboot] → ONLINE_AFTER_REBOOT → ONLINE`
 
-## Cosa succede se Internet non è pronto dopo il riavvio
+Questo ci dà già gli estremi necessari per calcolare il tempo di indisponibilità osservato.
 
-Se il primo heartbeat fallisce, l'Agent non si chiude: registra l'errore e riprova dopo 30 secondi.
+## Esempio pratico
 
-Se deve comunicare `ONLINE_AFTER_REBOOT`, conserva quello stato finché il backend non lo riceve con successo. Solo dopo passa a `ONLINE`.
+`18:42  ONLINE`
 
-Questo evita di perdere l'informazione del rientro solo perché LAN, Wi-Fi o DNS si sono avviati qualche secondo dopo Windows.
+`18:51  REBOOT_PENDING`
+
+`18:53  ultimo heartbeat prima del riavvio`
+
+`19:02  ONLINE_AFTER_REBOOT`
+
+La console potrà mostrare qualcosa come:
+
+**Aggiornamento con riavvio — PC tornato online — indisponibilità osservata circa 9 minuti.**
+
+È importante chiamarla inizialmente “indisponibilità osservata”: non pretendiamo di conoscere il secondo esatto in cui firmware/Windows hanno iniziato e terminato ogni fase mentre l'Agent non poteva funzionare.
 
 ## Log locale
 
-Il log è:
+`C:\ProgramData\W11UpgradeAssistant\monitor-agent.log` registra avvio, heartbeat riusciti ed errori. La chiave non viene scritta nel log.
 
-`C:\ProgramData\W11UpgradeAssistant\monitor-agent.log`
+## PC Monitor
 
-Registra avvio, heartbeat riusciti ed errori di collegamento. La chiave Agent non viene scritta nel log.
-
-## Dove finiscono i battiti
-
-Il backend usa il foglio `PC Monitor`. Ogni Agent occupa una sola riga; un nuovo heartbeat aggiorna quella riga invece di aggiungerne una ogni 30 secondi.
-
-Le colonne previste sono:
-
-`Agent ID | PC | Agent Version | Stato | Ultimo contatto server | Timestamp Agent UTC | Boot UTC | Windows | Build`
-
-L'ultimo contatto viene stabilito dal server, non dall'orologio del PC.
-
-## Come riconosce un riavvio
-
-L'Agent salva l'ultimo boot in `C:\ProgramData\W11UpgradeAssistant\state.json`. Quando riparte confronta il boot precedente con quello attuale. Se sono diversi invia `ONLINE_AFTER_REBOOT`.
-
-## Come installeremo il PC pilota
-
-Quando endpoint Apps Script e `MONITOR_AGENT_KEY` saranno pronti, da PowerShell aperto come amministratore useremo l'installer passando quei due valori. L'installer controlla che l'endpoint sia HTTPS e che la chiave abbia almeno 24 caratteri.
-
-Il risultato atteso è:
-
-`Avvio Windows → Task SYSTEM → Agent → heartbeat → Apps Script → PC Monitor`
-
-Da quel momento l'Agent non dipende più dall'utente collegato al PC.
+Ogni Agent occupa una riga nel foglio `PC Monitor`; ogni heartbeat aggiorna quella riga. L'ultimo contatto è stabilito dal server, non dall'orologio del PC.
 
 ## Cosa manca
 
-Prima del test reale dobbiamo ancora:
+I prossimi passi sono: far conservare al backend gli **eventi importanti** separatamente dagli heartbeat; trasformare `REBOOT_PENDING + perdita heartbeat + ONLINE_AFTER_REBOOT` in una sessione di reboot con durata; verificare l'esito dell'aggiornamento; infine mostrare tutto nella schermata LIVE della PWA.
 
-1. impostare `MONITOR_AGENT_KEY` nelle Script Properties di Apps Script;
-2. deployare il backend aggiornato come Web App;
-3. eseguire l'installer su un solo PC pilota;
-4. verificare heartbeat e rientro dopo un riavvio reale;
-5. costruire la schermata LIVE della PWA con stati verde/arancione/rosso.
+## Per Pietro: cosa abbiamo ottenuto oggi
 
-## Per Pietro: cosa abbiamo ottenuto con questo passo
+Prima il nostro “centralino” poteva capire: «il PC era vivo, è sparito, poi è tornato».
 
-Questa modifica sembra piccola, ma è fondamentale per il progetto.
-
-Se il monitor richiedesse di aprire manualmente un programma dopo ogni reboot, non potrebbe mai controllare seriamente i reboot di Windows Update.
-
-Ora invece Windows può riavviarsi, arrivare alla schermata di accesso senza che nessuno tocchi il PC e l'Agent è già in funzione. È esattamente il comportamento necessario per poter dire dal telefono: «questo PC è tornato vivo».
+Adesso il PC può avvisare prima: **«Windows Update mi chiede un riavvio.»** Questo rende molto più intelligente ciò che succederà dopo: quando il battito sparisce, non dobbiamo trattarlo immediatamente come un guasto. È il primo pezzo che ci permette di distinguere un normale reboot da un PC misteriosamente offline.
