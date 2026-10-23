@@ -4,9 +4,9 @@
 
 La catena tecnica è:
 
-`Windows → Agent → HTTPS → Apps Script → PC Monitor`
+`Windows → Agent → HTTPS → Apps Script → PC Monitor + Reboot Sessions`
 
-L'Agent parte automaticamente con Windows, senza login, e dalla versione 0.3 riconosce anche quando **Windows Update ha già stabilito che serve un riavvio**.
+L'Agent parte automaticamente con Windows, senza login. Riconosce quando Windows Update richiede un riavvio e, da oggi, il backend trasforma quei segnali in una vera **sessione di reboot** con un cronometro dell'indisponibilità osservata.
 
 ## Che cos'è l'Agent
 
@@ -16,23 +16,53 @@ L'Agent parte automaticamente con Windows, senza login, e dalla versione 0.3 ric
 
 Ogni 30 secondi l'Agent invia Agent ID, versione, nome PC, stato, data/ora, ultimo avvio di Windows, edizione e build. È come se il PC telefonasse alla centrale dicendo: «Sono questo PC, sono vivo e questo è il mio stato».
 
-## Novità v0.3: REBOOT_PENDING
+## REBOOT_PENDING
 
-L'Agent controlla il segnale `WindowsUpdate\Auto Update\RebootRequired` nel registro di Windows. Quando Windows Update crea questo indicatore, il monitor passa da:
+L'Agent controlla il segnale `WindowsUpdate\Auto Update\RebootRequired` nel registro di Windows. Quando Windows Update crea questo indicatore, il monitor passa da `ONLINE` a `REBOOT_PENDING` senza aspettare che il PC si spenga.
 
-`ONLINE`
+Abbiamo scelto volutamente un segnale conservativo: non etichettiamo automaticamente come aggiornamento ogni generica richiesta di reboot di Windows.
 
-a:
+## Novità: Reboot Sessions
 
-`REBOOT_PENDING`
+Il backend ora crea automaticamente il foglio `Reboot Sessions`. Non salviamo ogni heartbeat per sempre: salviamo invece l'evento importante.
 
-senza aspettare che il PC si spenga.
+Quando arriva il primo `REBOOT_PENDING`, viene aperta una sessione con un ID come `RB-12AB34CD` e stato `IN_ATTESA_RIENTRO`. Gli heartbeat successivi con lo stesso stato non creano duplicati.
 
-In italiano normale: prima sapevamo che il PC si era riavviato soltanto quando lo vedevamo tornare. Adesso riusciamo anche a sentirgli dire prima: **«Ho finito una fase dell'aggiornamento e Windows Update vuole che mi riavvii.»**
+Quando, dopo il riavvio, l'Agent invia `ONLINE_AFTER_REBOOT`, il backend chiude quella sessione e registra:
 
-Questo è prezioso perché, se poco dopo spariscono gli heartbeat, il backend avrà un forte indizio che l'assenza è collegata all'aggiornamento e non a un cavo staccato o a uno spegnimento casuale.
+- PC e Agent ID;
+- quando Windows Update ha richiesto il riavvio;
+- l'ultimo contatto server precedente al rientro;
+- l'ora in cui il PC è tornato online;
+- il nuovo Boot UTC;
+- i secondi e i minuti di indisponibilità osservata;
+- l'esito `RIENTRATO`.
 
-Abbiamo scelto volutamente un segnale conservativo: per ora `REBOOT_PENDING` riguarda il marcatore specifico di Windows Update. Non etichettiamo automaticamente come aggiornamento ogni generica richiesta di reboot di Windows.
+Se il backend vede `ONLINE_AFTER_REBOOT` senza aver prima ricevuto `REBOOT_PENDING`, non butta via l'informazione: registra comunque un `RIAVVIO_RILEVATO`. Questo copre, per esempio, un riavvio manuale o un segnale pending che non siamo riusciti a osservare.
+
+## Come funziona il cronometro
+
+Esempio:
+
+`18:51:10  REBOOT_PENDING`
+
+`18:53:02  ultimo heartbeat ricevuto`
+
+`19:02:33  ONLINE_AFTER_REBOOT`
+
+Il backend calcola:
+
+`19:02:33 - 18:53:02 = 9 minuti e 31 secondi`
+
+La console potrà quindi mostrare:
+
+**COORD-OSS — rientrato — indisponibilità osservata 9m 31s**
+
+### Perché diciamo “indisponibilità osservata”
+
+È una distinzione importante. L'Agent gira dentro Windows: mentre il PC è spento o Windows sta applicando gli aggiornamenti, l'Agent non può parlare. Il nostro cronometro misura quindi il tempo tra l'ultimo contatto ricevuto e il primo contatto dopo il nuovo boot. Con heartbeat ogni 30 secondi, l'inizio dell'assenza ha una piccola tolleranza legata proprio a quell'intervallo.
+
+Non fingiamo quindi di conoscere il secondo esatto mostrato dalla schermata “Aggiornamenti in corso”. Misuriamo invece una cosa verificabile e molto utile operativamente: **per quanto tempo il PC non è stato disponibile alla centrale**.
 
 ## Avvio automatico
 
@@ -46,42 +76,36 @@ Abbiamo scelto volutamente un segnale conservativo: per ora `REBOOT_PENDING` rig
 
 L'Agent confronta il boot precedente con quello attuale. Se sono diversi, invia `ONLINE_AFTER_REBOOT`. Se la rete non è ancora pronta, continua a riprovare questo stato finché il server non lo riceve, poi torna alla rilevazione LIVE.
 
-La sequenza che vogliamo osservare diventa quindi:
+La sequenza completa è ora:
 
-`ONLINE → REBOOT_PENDING → [heartbeat assente durante reboot] → ONLINE_AFTER_REBOOT → ONLINE`
+`ONLINE → REBOOT_PENDING → [heartbeat assente] → ONLINE_AFTER_REBOOT → ONLINE`
 
-Questo ci dà già gli estremi necessari per calcolare il tempo di indisponibilità osservato.
+Il backend la trasforma in:
 
-## Esempio pratico
-
-`18:42  ONLINE`
-
-`18:51  REBOOT_PENDING`
-
-`18:53  ultimo heartbeat prima del riavvio`
-
-`19:02  ONLINE_AFTER_REBOOT`
-
-La console potrà mostrare qualcosa come:
-
-**Aggiornamento con riavvio — PC tornato online — indisponibilità osservata circa 9 minuti.**
-
-È importante chiamarla inizialmente “indisponibilità osservata”: non pretendiamo di conoscere il secondo esatto in cui firmware/Windows hanno iniziato e terminato ogni fase mentre l'Agent non poteva funzionare.
+`sessione aperta → attesa → sessione chiusa + durata`
 
 ## Log locale
 
 `C:\ProgramData\W11UpgradeAssistant\monitor-agent.log` registra avvio, heartbeat riusciti ed errori. La chiave non viene scritta nel log.
 
-## PC Monitor
+## PC Monitor e Reboot Sessions
 
-Ogni Agent occupa una riga nel foglio `PC Monitor`; ogni heartbeat aggiorna quella riga. L'ultimo contatto è stabilito dal server, non dall'orologio del PC.
+`PC Monitor` è la fotografia LIVE: una riga per PC, aggiornata a ogni heartbeat.
+
+`Reboot Sessions` è invece lo storico: una riga per riavvio significativo. Questa separazione evita di riempire il foglio con migliaia di battiti e ci permette di conservare ciò che interessa davvero.
 
 ## Cosa manca
 
-I prossimi passi sono: far conservare al backend gli **eventi importanti** separatamente dagli heartbeat; trasformare `REBOOT_PENDING + perdita heartbeat + ONLINE_AFTER_REBOOT` in una sessione di reboot con durata; verificare l'esito dell'aggiornamento; infine mostrare tutto nella schermata LIVE della PWA.
+Il prossimo passo è aggiungere la **verifica dell'esito di Windows Update** dopo il rientro. Vogliamo distinguere almeno `UPDATE_OK`, `UPDATE_FAILED` e `DA_VERIFICARE`, collegando l'esito alla sessione di reboot. Dopo quello porteremo PC Monitor e Reboot Sessions nella schermata LIVE della PWA con stati immediatamente leggibili.
 
 ## Per Pietro: cosa abbiamo ottenuto oggi
 
-Prima il nostro “centralino” poteva capire: «il PC era vivo, è sparito, poi è tornato».
+Prima il centralino sapeva che un PC voleva riavviarsi e che, prima o poi, era tornato.
 
-Adesso il PC può avvisare prima: **«Windows Update mi chiede un riavvio.»** Questo rende molto più intelligente ciò che succederà dopo: quando il battito sparisce, non dobbiamo trattarlo immediatamente come un guasto. È il primo pezzo che ci permette di distinguere un normale reboot da un PC misteriosamente offline.
+Adesso prende carta e penna da solo: apre una pratica quando Windows Update chiede il riavvio, aspetta il ritorno del PC, chiude la pratica e scrive **quanto è rimasto indisponibile**.
+
+Quindi non avremo più soltanto «è tornato». Avremo qualcosa del tipo:
+
+**RECEPTION-02 — aggiornamento con riavvio — rientrato — 8,7 minuti di indisponibilità.**
+
+Il prossimo salto sarà far rispondere automaticamente anche all'ultima domanda: **“È tornato, ma l'aggiornamento è riuscito?”**
