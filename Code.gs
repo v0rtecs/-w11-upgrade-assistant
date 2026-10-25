@@ -71,8 +71,6 @@ function handleHeartbeat_(ss, body) {
   const now = new Date();
   const row = findAgentRow_(sheet, agentId);
 
-  // Capture the previous server-side contact BEFORE overwriting PC Monitor.
-  // This becomes our best observed estimate of when the PC disappeared.
   let previousContact = null;
   let previousStatus = '';
   if (row) {
@@ -82,13 +80,20 @@ function handleHeartbeat_(ss, body) {
   }
 
   const status = String(body.status || 'ONLINE');
+  const updateStatus = String(body.updateStatus || '');
+  const updateTitle = String(body.updateTitle || '');
+  const updateResultCode = String(body.updateResultCode || '');
+  const updateDateUtc = String(body.updateDateUtc || '');
 
   if (status === 'REBOOT_PENDING') {
     ensureOpenRebootSession_(rebootSheet, agentId, String(body.hostName || ''), now);
   }
 
   if (status === 'ONLINE_AFTER_REBOOT') {
-    closeRebootSession_(rebootSheet, agentId, now, previousContact, String(body.bootTimeUtc || ''));
+    closeRebootSession_(
+      rebootSheet, agentId, String(body.hostName || ''), now, previousContact,
+      String(body.bootTimeUtc || ''), updateStatus, updateTitle, updateResultCode, updateDateUtc
+    );
   }
 
   const values = [[
@@ -100,7 +105,11 @@ function handleHeartbeat_(ss, body) {
     String(body.timestampUtc || ''),
     String(body.bootTimeUtc || ''),
     String(body.windows || ''),
-    String(body.build || '')
+    String(body.build || ''),
+    updateStatus,
+    updateTitle,
+    updateResultCode,
+    updateDateUtc
   ]];
 
   if (row) sheet.getRange(row, 1, 1, values[0].length).setValues(values);
@@ -110,45 +119,59 @@ function handleHeartbeat_(ss, body) {
 }
 
 function getOrCreateMonitorSheet_(ss) {
+  const headers = [
+    'Agent ID','PC','Agent Version','Stato','Ultimo contatto server',
+    'Timestamp Agent UTC','Boot UTC','Windows','Build','Update Status',
+    'Update Title','Update Result Code','Update Date UTC'
+  ];
   let sheet = ss.getSheetByName(MONITOR_SHEET);
   if (!sheet) {
     sheet = ss.insertSheet(MONITOR_SHEET);
-    sheet.appendRow([
-      'Agent ID','PC','Agent Version','Stato','Ultimo contatto server',
-      'Timestamp Agent UTC','Boot UTC','Windows','Build'
-    ]);
+    sheet.appendRow(headers);
     sheet.setFrozenRows(1);
+  } else {
+    ensureHeaders_(sheet, headers);
   }
   return sheet;
 }
 
 function getOrCreateRebootSheet_(ss) {
+  const headers = [
+    'Session ID','Agent ID','PC','Riavvio richiesto','Ultimo contatto prima del rientro',
+    'Rientro online','Indisponibilità osservata sec','Indisponibilità min','Boot UTC dopo riavvio','Esito',
+    'Update Status','Update Title','Update Result Code','Update Date UTC'
+  ];
   let sheet = ss.getSheetByName(REBOOT_SHEET);
   if (!sheet) {
     sheet = ss.insertSheet(REBOOT_SHEET);
-    sheet.appendRow([
-      'Session ID','Agent ID','PC','Riavvio richiesto','Ultimo contatto prima del rientro',
-      'Rientro online','Indisponibilità osservata sec','Indisponibilità min','Boot UTC dopo riavvio','Esito'
-    ]);
+    sheet.appendRow(headers);
     sheet.setFrozenRows(1);
+  } else {
+    ensureHeaders_(sheet, headers);
   }
   return sheet;
+}
+
+function ensureHeaders_(sheet, headers) {
+  if (sheet.getMaxColumns() < headers.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+  }
+  sheet.getRange(1,1,1,headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
 }
 
 function ensureOpenRebootSession_(sheet, agentId, hostName, now) {
   if (findOpenRebootRow_(sheet, agentId)) return;
   const sessionId = 'RB-' + Utilities.getUuid().substring(0,8).toUpperCase();
-  sheet.appendRow([sessionId,agentId,hostName,now,'','','','','','IN_ATTESA_RIENTRO']);
+  sheet.appendRow([sessionId,agentId,hostName,now,'','','','','','IN_ATTESA_RIENTRO','','','','']);
 }
 
-function closeRebootSession_(sheet, agentId, returnedAt, previousContact, bootTimeUtc) {
+function closeRebootSession_(sheet, agentId, hostName, returnedAt, previousContact, bootTimeUtc, updateStatus, updateTitle, updateResultCode, updateDateUtc) {
   let row = findOpenRebootRow_(sheet, agentId);
 
-  // A reboot may be detected even if REBOOT_PENDING was never observed.
-  // We still record it rather than silently losing the event.
   if (!row) {
     const sessionId = 'RB-' + Utilities.getUuid().substring(0,8).toUpperCase();
-    sheet.appendRow([sessionId,agentId,'','',previousContact||'',returnedAt,'','','', 'RIAVVIO_RILEVATO']);
+    sheet.appendRow([sessionId,agentId,hostName,'',previousContact||'',returnedAt,'','',bootTimeUtc,'RIAVVIO_RILEVATO',updateStatus,updateTitle,updateResultCode,updateDateUtc]);
     row = sheet.getLastRow();
   }
 
@@ -159,9 +182,12 @@ function closeRebootSession_(sheet, agentId, returnedAt, previousContact, bootTi
     minutes = Math.round((seconds / 60) * 10) / 10;
   }
 
-  sheet.getRange(row,5,1,6).setValues([[
-    previousContact || '', returnedAt, seconds, minutes, bootTimeUtc,
-    seconds === '' ? 'RIENTRATO_DURATA_NON_CALCOLABILE' : 'RIENTRATO'
+  let outcome = seconds === '' ? 'RIENTRATO_DURATA_NON_CALCOLABILE' : 'RIENTRATO';
+  if (updateStatus) outcome += '_' + updateStatus;
+
+  sheet.getRange(row,5,1,10).setValues([[
+    previousContact || '', returnedAt, seconds, minutes, bootTimeUtc, outcome,
+    updateStatus, updateTitle, updateResultCode, updateDateUtc
   ]]);
 }
 
