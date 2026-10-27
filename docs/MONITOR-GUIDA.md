@@ -80,6 +80,33 @@ Queste operazioni non richiedono necessariamente che l'utente esca da Windows, m
 
 Le percentuali mostrate da strumenti come SFC non devono essere interpretate come avanzamento lineare: il processo può rimanere a lungo su una percentuale e poi avanzare rapidamente. L'Assistant dovrà distinguere, quando possibile, tra processo realmente bloccato e processo ancora attivo.
 
+### Monitoraggio intelligente dell'attività
+
+Durante SFC, DISM, copia ISO, Windows Setup e Windows Update, l'Assistant non deve basarsi soltanto sulla percentuale visualizzata. Deve raccogliere anche indicatori di attività reale, quando disponibili, come variazione del tempo CPU dei processi interessati, attività recente, presenza dei processi/servizi attesi e tempo trascorso dall'ultimo segnale utile.
+
+L'interfaccia dovrà poter mostrare, per esempio:
+
+```text
+SFC /SCANNOW
+51%
+
+STATO: IN ESECUZIONE
+Attività manutenzione rilevata
+TiWorker CPU: +12 sec
+Ultima attività: 3 sec fa
+Tempo trascorso: 14:32
+```
+
+La classificazione prevista è:
+
+- `ATTIVO` / verde: attività recente rilevata, anche se la percentuale non cambia;
+- `DA VERIFICARE` / giallo: nessuna variazione significativa per un intervallo prolungato;
+- `POSSIBILE BLOCCO` / rosso: assenza prolungata di più indicatori di attività, senza concludere automaticamente che il processo sia certamente bloccato.
+
+Le soglie dovranno essere conservative e specifiche per operazione. Una percentuale ferma, da sola, **non deve mai generare un errore**.
+
+Lo stesso modello di monitoraggio dovrà essere riutilizzabile per SFC, DISM, trasferimento della ISO, Windows Setup e Windows Update, così da rendere leggibile da remoto la differenza tra un'operazione lenta e un'operazione che richiede intervento.
+
 ## 3. PREPARAZIONE / UPGRADE — PC libero
 
 Questa modalità può effettuare modifiche e deve essere usata quando l'operatore ha terminato il lavoro.
@@ -178,11 +205,11 @@ La chiave reale non va inserita nel repository.
 
 **Completato:** Agent v0.4; heartbeat; riconoscimento reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza dell'esito; Reboot Sessions; prima API dati per dashboard; calcolo server-side ONLINE/OFFLINE; chiave dashboard separata.
 
-**Progettato:** modulo Windows 11 Pre-Check a tre livelli (`SCAN`, `DIAGNOSTICA`, `PREPARAZIONE/UPGRADE`); controlli hardware/firmware; controllo AnyDesk; rilevazione preventiva delle anomalie `ProfileList` e dei SID; classificazione `OK/ATTENZIONE/BLOCCATO`.
+**Progettato:** modulo Windows 11 Pre-Check a tre livelli (`SCAN`, `DIAGNOSTICA`, `PREPARAZIONE/UPGRADE`); controlli hardware/firmware; controllo AnyDesk; rilevazione preventiva delle anomalie `ProfileList` e dei SID; classificazione `OK/ATTENZIONE/BLOCCATO`; monitoraggio intelligente dell'attività di SFC/DISM/copia ISO/Setup/Windows Update con stati `ATTIVO`, `DA VERIFICARE` e `POSSIBILE BLOCCO`.
 
-**Da implementare/testare:** raccolta effettiva dei dati Pre-Check nell'Agent/desktop app, invio al backend, visualizzazione nella dashboard, test su PC reali e verifica delle prestazioni della SCAN mentre l'operatore lavora.
+**Da implementare/testare:** raccolta effettiva dei dati Pre-Check nell'Agent/desktop app, monitor attività dei processi, invio al backend, visualizzazione nella dashboard, test su PC reali e verifica delle prestazioni della SCAN mentre l'operatore lavora.
 
-**Prossimi passi:** implementare prima la SCAN read-only e il controllo profili; poi esporre il risultato alla dashboard. SFC/DISM e le azioni correttive resteranno separate dalla scansione silenziosa.
+**Prossimi passi:** implementare prima la SCAN read-only e il controllo profili; poi esporre il risultato alla dashboard. SFC/DISM e le azioni correttive resteranno separate dalla scansione silenziosa. Il monitor attività verrà condiviso dalle operazioni lunghe per evitare falsi allarmi basati sulla sola percentuale.
 
 ## Per Pietro: cosa stiamo costruendo
 
