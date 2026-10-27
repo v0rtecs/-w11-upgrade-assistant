@@ -6,7 +6,9 @@ La catena è ora:
 
 `Windows → Agent → HTTPS → Apps Script → PC Monitor + Reboot Sessions → API Dashboard → futura PWA`
 
-L'Agent osserva Windows e manda heartbeat. Il backend conserva stato, riavvii, durata ed esito Windows Update. Da oggi esiste anche il primo **endpoint pensato apposta per la dashboard**: il telefono non dovrà capire le righe di Google Sheet, riceverà già una fotografia sintetica dei PC.
+L'Agent osserva Windows e manda heartbeat. Il backend conserva stato, riavvii, durata ed esito Windows Update. Esiste anche un endpoint pensato apposta per la dashboard: il telefono non dovrà capire le righe di Google Sheet, riceverà già una fotografia sintetica dei PC.
+
+Il progetto viene ora esteso con un secondo obiettivo: **preparare e diagnosticare i PC prima dell'upgrade a Windows 11**, riducendo al minimo i controlli manuali via AnyDesk.
 
 ## Che cos'è l'Agent
 
@@ -31,15 +33,124 @@ Dopo il reboot l'Agent legge la cronologia locale di Windows Update. La classifi
 
 Backend e Reboot Sessions conservano anche titolo update, result code e data dell'evento.
 
-## Novità: prima API della dashboard
+# Nuovo modulo: Windows 11 Pre-Check
 
-`Code.gs` espone ora una vista JSON dedicata alla futura PWA. Non restituisce il foglio grezzo: costruisce una scheda già pronta per ogni PC con:
+L'Upgrade Assistant deve poter eseguire una **scansione preliminare non invasiva anche mentre l'operatore sta lavorando sul PC**. Lo scopo è arrivare alla sessione di manutenzione sapendo già se il computer è pronto oppure quale problema deve essere corretto.
+
+La diagnostica viene divisa in tre livelli, in modo che un controllo sicuro non possa accidentalmente trasformarsi in una manutenzione invasiva.
+
+## 1. SCAN — sicura durante il lavoro
+
+Questa modalità deve essere principalmente read-only e non deve riavviare il PC, fermare servizi, cancellare cache o modificare il registro.
+
+Controlli previsti:
+
+- produttore e modello del PC;
+- CPU, RAM e versione/build di Windows;
+- modalità firmware UEFI/Legacy;
+- schema disco GPT/MBR;
+- presenza, versione e stato TPM;
+- stato Secure Boot;
+- spazio libero sul disco di sistema;
+- stato di AnyDesk e tipo di avvio del relativo servizio;
+- stato dei principali servizi Windows Update;
+- presenza di riavvii pendenti;
+- presenza e percorso della ISO Windows 11, quando configurata;
+- inventario software utile alla diagnosi;
+- anomalie evidenti dei profili utente nel `ProfileList`;
+- SID non risolvibili/orfani;
+- più SID che puntano allo stesso `ProfileImagePath`;
+- profili `.bak` o chiavi anomale che possono interferire con la migrazione;
+- controlli preliminari utili sui driver e sullo stato del sistema.
+
+Il controllo dei profili è considerato importante perché una configurazione incoerente può superare i normali controlli hardware e far fallire Windows Setup solo durante la fase di migrazione dei dati.
+
+La modalità SCAN **segnala soltanto** l'anomalia: non elimina chiavi del registro e non modifica profili automaticamente.
+
+## 2. DIAGNOSTICA COMPLETA — possibile durante il lavoro, ma più pesante
+
+Comprende i controlli della SCAN e può aggiungere verifiche che usano CPU e disco, per esempio:
+
+- `sfc /scannow`;
+- DISM di verifica/riparazione dell'immagine Windows;
+- controlli più approfonditi sullo stato dei componenti;
+- raccolta di log diagnostici.
+
+Queste operazioni non richiedono necessariamente che l'utente esca da Windows, ma possono rallentare il PC. L'interfaccia deve quindi avvisare chiaramente prima di avviarle.
+
+Le percentuali mostrate da strumenti come SFC non devono essere interpretate come avanzamento lineare: il processo può rimanere a lungo su una percentuale e poi avanzare rapidamente. L'Assistant dovrà distinguere, quando possibile, tra processo realmente bloccato e processo ancora attivo.
+
+## 3. PREPARAZIONE / UPGRADE — PC libero
+
+Questa modalità può effettuare modifiche e deve essere usata quando l'operatore ha terminato il lavoro.
+
+Può comprendere:
+
+- pulizia o ripristino dei componenti Windows Update;
+- eventuali correzioni approvate dei profili utente;
+- modifiche necessarie a UEFI/Secure Boot quando supportate e autorizzate;
+- copia/montaggio della ISO;
+- avvio di Windows Setup;
+- gestione dei riavvii e monitoraggio del rientro online.
+
+Nessuna correzione distruttiva o modifica ai profili deve essere eseguita automaticamente sulla sola base della SCAN.
+
+## Esito sintetico del Pre-Check
+
+L'obiettivo è produrre un risultato leggibile in pochi secondi, per esempio:
+
+```text
+WINDOWS 11 UPGRADE ASSISTANT
+
+PC:          LENOVO 21KK
+Windows:     Windows 10 Pro
+CPU:         Ryzen 5 7530U
+
+[OK] UEFI
+[OK] Disco GPT
+[OK] TPM 2.0
+[OK] Secure Boot
+[OK] Spazio disco
+[OK] AnyDesk: Running / Automatic
+[OK] Profili utente
+[OK] ISO Windows 11
+
+RISULTATO: PC PRONTO PER WINDOWS 11
+```
+
+In presenza di una configurazione incoerente dei profili, invece:
+
+```text
+[ERRORE] PROFILI UTENTE
+
+C:\Users\NomeUtente associato a più SID.
+Uno o più SID risultano non risolvibili oppure sono presenti chiavi anomale/.bak.
+
+RISULTATO: UPGRADE BLOCCATO
+Correggere il profilo prima di procedere.
+```
+
+L'Assistant dovrà classificare i risultati almeno come `OK`, `ATTENZIONE` ed `ERRORE/BLOCCANTE`, conservando il dettaglio tecnico per l'helpdesk.
+
+## Principio operativo
+
+Il flusso desiderato diventa:
+
+`SCAN durante il normale lavoro → individuazione preventiva anomalie → manutenzione solo sui PC che la richiedono → upgrade → monitoraggio reboot/rientro/esito`
+
+L'obiettivo pratico è ridurre la sessione AnyDesk a un intervento sulle sole eccezioni, invece di ripetere manualmente la stessa serie di comandi su ogni PC.
+
+## API della dashboard
+
+`Code.gs` espone una vista JSON dedicata alla futura PWA. Non restituisce il foglio grezzo: costruisce una scheda già pronta per ogni PC con:
 
 `PC | ONLINE/OFFLINE | ultimo contatto | stato Agent | reboot pending | Windows/build | ultimo esito update | ultimo reboot e durata`
 
 Restituisce anche un riepilogo generale:
 
 `totale PC | online | offline | reboot pending | update falliti`
+
+In futuro la stessa dashboard potrà mostrare anche lo stato del Pre-Check (`PRONTO`, `ATTENZIONE`, `BLOCCATO`) senza confonderlo con lo stato live dell'Agent.
 
 ### Come decidiamo ONLINE/OFFLINE
 
@@ -59,22 +170,6 @@ La chiamata prevista è concettualmente:
 
 La chiave reale non va inserita nel repository.
 
-## Perché questa API è importante
-
-Prima la futura app avrebbe dovuto leggere un Google Sheet e capire da sola quali colonne significassero cosa. Sarebbe stato fragile: ogni modifica al foglio avrebbe potuto rompere la PWA.
-
-Ora Apps Script fa da **traduttore**. Il foglio resta il nostro archivio semplice; la PWA riceve invece un formato stabile e pensato per lo schermo del telefono.
-
-Esempio di ciò che potremo mostrare:
-
-`COORD-OSS   🟢 ONLINE   ultimo contatto 18 s fa`
-
-`Ultimo reboot: 9,5 min   ✅ UPDATE_OK`
-
-oppure:
-
-`RECEPTION-02   🔴 OFFLINE   ultimo contatto 14 min fa`
-
 ## Reboot Sessions
 
 `PC Monitor` è la fotografia LIVE, una riga per PC. `Reboot Sessions` è lo storico permanente dei riavvii significativi. Anche se `REBOOT_PENDING` non fosse stato osservato, un nuovo boot può essere archiviato come `RIAVVIO_RILEVATO` senza inventare che fosse causato da Windows Update.
@@ -83,14 +178,14 @@ oppure:
 
 **Completato:** Agent v0.4; heartbeat; riconoscimento reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza dell'esito; Reboot Sessions; prima API dati per dashboard; calcolo server-side ONLINE/OFFLINE; chiave dashboard separata.
 
-**Da testare sul campo:** soglia ONLINE di 90 secondi, associazione dell'update al reboot e comportamento con rete lenta/PC in sospensione.
+**Progettato:** modulo Windows 11 Pre-Check a tre livelli (`SCAN`, `DIAGNOSTICA`, `PREPARAZIONE/UPGRADE`); controlli hardware/firmware; controllo AnyDesk; rilevazione preventiva delle anomalie `ProfileList` e dei SID; classificazione `OK/ATTENZIONE/BLOCCATO`.
 
-**Prossimo passo:** costruire la prima pagina PWA mobile che consumi questa API e mostri le card dei PC con priorità visiva: problemi prima, PC sani dopo.
+**Da implementare/testare:** raccolta effettiva dei dati Pre-Check nell'Agent/desktop app, invio al backend, visualizzazione nella dashboard, test su PC reali e verifica delle prestazioni della SCAN mentre l'operatore lavora.
 
-## Per Pietro: cosa abbiamo costruito oggi
+**Prossimi passi:** implementare prima la SCAN read-only e il controllo profili; poi esporre il risultato alla dashboard. SFC/DISM e le azioni correttive resteranno separate dalla scansione silenziosa.
 
-Finora avevamo costruito soprattutto la **centrale che capisce cosa succede**. Oggi abbiamo aggiunto il suo sportello di lettura.
+## Per Pietro: cosa stiamo costruendo
 
-Pensa al foglio come al magazzino: contiene tutti i dati. L'API Dashboard è l'addetto che prende quei dati e risponde al telefono con una frase già ordinata: «questi PC sono online, questi offline, questo aspetta un riavvio, questo ha fallito un update e questo ha impiegato 9,5 minuti a tornare».
+Il progetto non è più soltanto una centrale che osserva Windows Update. Sta diventando un assistente operativo per l'intero ciclo di upgrade.
 
-Questo ci permette di costruire la PWA senza legarla alla struttura interna del foglio. Il prossimo passaggio sarà quindi finalmente molto visibile: **la prima schermata della mini console sul telefono**.
+L'idea è semplice: mentre il PC viene normalmente utilizzato, l'Assistant può già raccogliere i controlli sicuri e dirci se la macchina è pronta. Quando arriva il momento dell'intervento remoto, non dobbiamo ricominciare da zero: lavoriamo soltanto sulle anomalie già individuate, avviamo l'upgrade e poi lasciamo all'Agent il compito di confermare riavvio, rientro online ed esito.
