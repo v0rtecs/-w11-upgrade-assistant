@@ -2,11 +2,17 @@
 
 ## Dove siamo arrivati
 
-La catena è ora:
+La catena principale è:
 
 `Windows → Agent → HTTPS → Apps Script → PC Monitor + Reboot Sessions → API Dashboard → monitor.html`
 
-L'Agent osserva Windows e manda heartbeat. Il backend conserva stato, riavvii, durata ed esito Windows Update. La prima schermata mobile della mini console è ora implementata in `monitor.html`: legge l'API Dashboard e trasforma i dati in schede leggibili dal telefono.
+L'Agent osserva Windows e manda heartbeat. Il backend conserva stato, riavvii, durata ed esito Windows Update. `monitor.html` trasforma questi dati in schede leggibili dal telefono.
+
+Da oggi l'Agent v0.5 incorpora anche la prima SCAN Windows 11 read-only:
+
+`PC → Get-W11PreCheck.ps1 → Agent → heartbeat`
+
+Il risultato non è ancora salvato dal backend: questo sarà il prossimo collegamento. La parte importante è che la raccolta sul PC è ora integrata nel processo reale dell'Agent e non è più soltanto uno script da avviare a mano.
 
 ## Che cos'è l'Agent
 
@@ -24,29 +30,27 @@ Il backend trasforma questa sequenza in una Reboot Session e misura l'**indispon
 
 Dopo il reboot l'Agent legge la cronologia locale di Windows Update. La classificazione resta prudente: `UPDATE_OK`, `UPDATE_OK_CON_ERRORI`, `UPDATE_FAILED` oppure `DA_VERIFICARE`. Backend e Reboot Sessions conservano anche titolo update, result code e data dell'evento.
 
-## La prima mini console mobile
+## Pre-Check automatico: cosa cambia con la v0.5
 
-`monitor.html` è la prima interfaccia operativa dedicata al monitoraggio. Non sostituisce la checklist principale: è una vista rapida da telefono.
+`Get-W11PreCheck.ps1` controlla in sola lettura produttore/modello, CPU, RAM, Windows/build, BIOS, UEFI/Legacy, GPT/MBR, TPM, Secure Boot, spazio libero su C:, AnyDesk e reboot pendenti. Produce `OK`, `ATTENZIONE` o `BLOCCATO`, più l'elenco dei motivi.
 
-Mostra in alto cinque contatori: PC totali, online, offline, reboot pending e update falliti. Sotto crea una card per ogni PC con ultimo contatto, Windows/build, esito update e durata dell'ultimo reboot.
+L'Agent ora esegue automaticamente questa scansione all'avvio e poi ogni **6 ore**. Non la eseguiamo ogni 30 secondi perché TPM, firmware, RAM e partizionamento non cambiano continuamente: sarebbe lavoro inutile sul PC.
 
-I PC non vengono mostrati soltanto in ordine alfabetico: la console porta automaticamente in cima le eccezioni con questa priorità:
+Fra una scansione e l'altra l'Agent conserva in memoria l'ultimo risultato valido e lo allega agli heartbeat. Se una scansione fallisce, non cancella immediatamente il precedente risultato valido: registra l'errore nel log e riprova al ciclo previsto. Questo evita che un errore momentaneo venga interpretato come «PC improvvisamente senza dati».
 
-`UPDATE_FAILED → REBOOT_PENDING → OFFLINE → ONLINE`
+Il JSON dell'heartbeat usa un oggetto `preCheck` separato. È una scelta intenzionale: il backend potrà evolvere i campi della scansione senza sporcare il livello principale del protocollo.
 
-In questo modo Pietro non deve scorrere tutti i PC per capire dove intervenire.
+## La mini console mobile
 
-La pagina si aggiorna automaticamente ogni 30 secondi, cioè con la stessa scala temporale dell'heartbeat. È disponibile anche un pulsante di aggiornamento manuale.
+`monitor.html` mostra cinque contatori: PC totali, online, offline, reboot pending e update falliti. Sotto crea una card per ogni PC con ultimo contatto, Windows/build, esito update e durata dell'ultimo reboot.
 
-### Configurazione sul telefono
+Le eccezioni vengono portate in cima con priorità `UPDATE_FAILED → REBOOT_PENDING → OFFLINE → ONLINE`. La pagina si aggiorna automaticamente ogni 30 secondi ed è disponibile anche un aggiornamento manuale.
 
-La mini console chiede due dati una sola volta: URL della Web App Apps Script e `MONITOR_DASHBOARD_KEY`. Li conserva nel `localStorage` del dispositivo e li riutilizza ai successivi accessi. La chiave degli Agent resta separata e non viene esposta alla dashboard.
-
-Nota di sicurezza: questa prima versione è pensata per uso personale/controllato. Salvare la chiave dashboard nel browser è pratico, ma non è ancora l'architettura finale per una distribuzione ampia a più operatori. Prima di un rilascio multiutente dovremo introdurre autenticazione e autorizzazioni vere, senza una chiave condivisa nel client.
+La console usa una `MONITOR_DASHBOARD_KEY` separata dalla chiave degli Agent. Nella versione prototipo la chiave dashboard è conservata nel `localStorage` del dispositivo; prima di una distribuzione multiutente servirà autenticazione vera.
 
 ## Come decidiamo ONLINE/OFFLINE
 
-Un PC spento non può comunicare «sono offline». La centrale guarda quanto tempo è passato dall'ultimo heartbeat ricevuto dal server. L'Agent parla ogni 30 secondi; consideriamo ONLINE un PC visto negli ultimi 90 secondi. Oltre la soglia la dashboard lo presenta come OFFLINE. Il margine evita falsi allarmi per un singolo heartbeat perso.
+Un PC spento non può comunicare «sono offline». La centrale guarda quanto tempo è passato dall'ultimo heartbeat. Con heartbeat ogni 30 secondi consideriamo ONLINE un PC visto negli ultimi 90 secondi; oltre la soglia viene mostrato OFFLINE. Il margine evita falsi allarmi per un singolo heartbeat perso.
 
 ## Reboot Sessions
 
@@ -54,15 +58,15 @@ Un PC spento non può comunicare «sono offline». La centrale guarda quanto tem
 
 # Windows 11 Pre-Check
 
-Il secondo obiettivo resta preparare e diagnosticare i PC prima dell'upgrade a Windows 11. Il modulo è diviso in tre livelli per evitare che una scansione sicura possa trasformarsi accidentalmente in manutenzione invasiva.
+Il modulo resta diviso in tre livelli per evitare che una scansione sicura possa trasformarsi accidentalmente in manutenzione invasiva.
 
 ### 1. SCAN — sicura durante il lavoro
 
-Read-only: produttore/modello, CPU/RAM/build, UEFI/Legacy, GPT/MBR, TPM, Secure Boot, spazio disco, AnyDesk, servizi Windows Update, reboot pendenti, ISO configurata, inventario utile, anomalie `ProfileList`, SID orfani/duplicati, chiavi `.bak` e controlli preliminari di sistema. Segnala soltanto: non modifica registro o profili.
+Read-only. La prima implementazione reale copre hardware, firmware, disco, TPM/Secure Boot, spazio, AnyDesk e reboot pending. I controlli più avanzati su servizi Windows Update, ISO e anomalie `ProfileList`/SID verranno aggiunti progressivamente, sempre senza modifiche automatiche.
 
 ### 2. DIAGNOSTICA COMPLETA
 
-Può comprendere SFC, DISM e raccolta log. L'interfaccia dovrà distinguere una percentuale semplicemente ferma da un processo realmente sospetto usando indicatori di attività, con stati `ATTIVO`, `DA VERIFICARE`, `POSSIBILE BLOCCO`.
+Potrà comprendere SFC, DISM e raccolta log. L'interfaccia dovrà distinguere una percentuale semplicemente ferma da un processo realmente sospetto usando indicatori di attività, con stati `ATTIVO`, `DA VERIFICARE`, `POSSIBILE BLOCCO`.
 
 ### 3. PREPARAZIONE / UPGRADE
 
@@ -74,16 +78,14 @@ Il flusso desiderato resta:
 
 ## Stato dell'implementazione
 
-**Completato:** Agent v0.4; heartbeat; reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza esito; Reboot Sessions; API dashboard; ONLINE/OFFLINE server-side; chiave dashboard separata; **prima UI mobile `monitor.html` con auto-refresh e ordinamento per criticità**.
+**Completato:** Agent **v0.5**; heartbeat; reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza esito; Reboot Sessions; API dashboard; ONLINE/OFFLINE server-side; chiave dashboard separata; UI mobile `monitor.html`; prima SCAN read-only; **esecuzione automatica del Pre-Check all'avvio e ogni 6 ore; risultato Pre-Check allegato agli heartbeat**.
 
-**Progettato:** Windows 11 Pre-Check a tre livelli; controlli hardware/firmware; AnyDesk; anomalie profili/SID; classificazione `OK/ATTENZIONE/BLOCCATO`; monitor intelligente delle operazioni lunghe.
+**Da implementare/testare:** persistenza del blocco `preCheck` nel backend; campi Pre-Check nell'API Dashboard; semaforo `OK/ATTENZIONE/BLOCCATO` sulle card; test end-to-end su un PC reale; controlli avanzati profili/SID; autenticazione multiutente futura.
 
-**Da implementare/testare:** test end-to-end della nuova dashboard contro la Web App pubblicata; raccolta effettiva Pre-Check nell'Agent; invio Pre-Check al backend; visualizzazione Pre-Check nella console; autenticazione multiutente futura.
-
-**Prossimo passo tecnico:** implementare la prima `SCAN` read-only nell'Agent, iniziando dai controlli che non modificano nulla (hardware, firmware, disco, TPM/Secure Boot, spazio, AnyDesk e reboot pending), quindi aggiungere il risultato sintetico all'API e alla card del PC.
+**Prossimo passo tecnico:** insegnare ad Apps Script a ricevere e conservare `preCheck`, mantenendo `scannedAtUtc`, stato, blocker/warning e dettagli essenziali; poi esporre questi dati nell'API e mostrare il semaforo sulla card del PC.
 
 ## Per Pietro: cosa stiamo costruendo
 
-La centrale adesso ha finalmente anche una faccia. Aprendo la mini console dal telefono non devi leggere Google Sheets: vedi subito quanti PC stanno bene e, soprattutto, quelli che richiedono attenzione. Un aggiornamento fallito viene portato in cima, poi vengono i PC che aspettano un riavvio e quelli offline.
+La centrale non deve limitarsi a dirti se un PC è acceso. Deve dirti anche se è **pronto per essere aggiornato**. Da oggi il piccolo Agent che già manda il battito esegue da solo, con calma, anche il controllo preliminare: una volta all'avvio e poi ogni sei ore.
 
-Dietro quella schermata continua a lavorare la parte più importante: ogni PC manda il proprio battito alla centrale, la centrale ricostruisce i riavvii e conserva l'esito di Windows Update. Il passo successivo farà la stessa cosa **prima** dell'upgrade: l'Agent controllerà in anticipo se il PC è pronto, senza disturbare chi lo sta usando.
+In pratica il PC continua a dire «sono vivo», ma adesso può portarsi dietro anche un foglietto diagnostico: «UEFI sì, GPT sì, TPM 2.0 sì, spazio sufficiente, AnyDesk presente: OK», oppure «attenzione» / «bloccato» con il motivo. Nel prossimo passaggio faremo leggere quel foglietto alla centrale e comparirà direttamente sul telefono.
