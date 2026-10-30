@@ -8,11 +8,11 @@ La catena principale è:
 
 L'Agent osserva Windows e manda heartbeat. Il backend conserva stato, riavvii, durata ed esito Windows Update. `monitor.html` trasforma questi dati in schede leggibili dal telefono.
 
-Da oggi l'Agent v0.5 incorpora anche la prima SCAN Windows 11 read-only:
+Con l'Agent v0.5 anche la SCAN Windows 11 read-only percorre ora la catena fino alla centrale:
 
-`PC → Get-W11PreCheck.ps1 → Agent → heartbeat`
+`PC → Get-W11PreCheck.ps1 → Agent → heartbeat → Apps Script → PC Monitor → API Dashboard`
 
-Il risultato non è ancora salvato dal backend: questo sarà il prossimo collegamento. La parte importante è che la raccolta sul PC è ora integrata nel processo reale dell'Agent e non è più soltanto uno script da avviare a mano.
+Il backend conserva l'ultimo Pre-Check valido per ogni PC e lo espone all'API. Il prossimo passaggio è puramente visivo: mostrare il semaforo e i motivi direttamente sulle card di `monitor.html`.
 
 ## Che cos'è l'Agent
 
@@ -30,15 +30,30 @@ Il backend trasforma questa sequenza in una Reboot Session e misura l'**indispon
 
 Dopo il reboot l'Agent legge la cronologia locale di Windows Update. La classificazione resta prudente: `UPDATE_OK`, `UPDATE_OK_CON_ERRORI`, `UPDATE_FAILED` oppure `DA_VERIFICARE`. Backend e Reboot Sessions conservano anche titolo update, result code e data dell'evento.
 
-## Pre-Check automatico: cosa cambia con la v0.5
+## Pre-Check automatico
 
 `Get-W11PreCheck.ps1` controlla in sola lettura produttore/modello, CPU, RAM, Windows/build, BIOS, UEFI/Legacy, GPT/MBR, TPM, Secure Boot, spazio libero su C:, AnyDesk e reboot pendenti. Produce `OK`, `ATTENZIONE` o `BLOCCATO`, più l'elenco dei motivi.
 
-L'Agent ora esegue automaticamente questa scansione all'avvio e poi ogni **6 ore**. Non la eseguiamo ogni 30 secondi perché TPM, firmware, RAM e partizionamento non cambiano continuamente: sarebbe lavoro inutile sul PC.
+L'Agent esegue automaticamente questa scansione all'avvio e poi ogni **6 ore**. Non la eseguiamo ogni 30 secondi perché TPM, firmware, RAM e partizionamento non cambiano continuamente.
 
-Fra una scansione e l'altra l'Agent conserva in memoria l'ultimo risultato valido e lo allega agli heartbeat. Se una scansione fallisce, non cancella immediatamente il precedente risultato valido: registra l'errore nel log e riprova al ciclo previsto. Questo evita che un errore momentaneo venga interpretato come «PC improvvisamente senza dati».
+Fra una scansione e l'altra l'Agent conserva in memoria l'ultimo risultato valido e lo allega agli heartbeat. Se una scansione fallisce, non cancella immediatamente il precedente risultato valido: registra l'errore nel log e riprova al ciclo previsto.
 
-Il JSON dell'heartbeat usa un oggetto `preCheck` separato. È una scelta intenzionale: il backend potrà evolvere i campi della scansione senza sporcare il livello principale del protocollo.
+### Cosa fa adesso la centrale con il Pre-Check
+
+Apps Script riconosce l'oggetto `preCheck` ricevuto dall'Agent e conserva in `PC Monitor`:
+
+- data/ora della scansione;
+- stato `OK`, `ATTENZIONE` o `BLOCCATO`;
+- blocker e warning;
+- produttore, modello e CPU;
+- RAM;
+- firmware UEFI/Legacy e GPT/MBR;
+- versione TPM e stato Secure Boot;
+- spazio libero su C:.
+
+Se un heartbeat successivo non contiene `preCheck`, il backend **mantiene l'ultimo risultato conosciuto** invece di cancellarlo. Questo è importante perché il controllo completo viene eseguito ogni sei ore, mentre gli heartbeat arrivano ogni 30 secondi.
+
+L'API Dashboard restituisce ora un oggetto `preCheck` per ciascun PC e aggiunge due contatori generali: `preCheckBlocked` e `preCheckWarning`. In questo modo l'interfaccia non dovrà ricostruire o reinterpretare i dati grezzi del foglio.
 
 ## La mini console mobile
 
@@ -47,6 +62,8 @@ Il JSON dell'heartbeat usa un oggetto `preCheck` separato. È una scelta intenzi
 Le eccezioni vengono portate in cima con priorità `UPDATE_FAILED → REBOOT_PENDING → OFFLINE → ONLINE`. La pagina si aggiorna automaticamente ogni 30 secondi ed è disponibile anche un aggiornamento manuale.
 
 La console usa una `MONITOR_DASHBOARD_KEY` separata dalla chiave degli Agent. Nella versione prototipo la chiave dashboard è conservata nel `localStorage` del dispositivo; prima di una distribuzione multiutente servirà autenticazione vera.
+
+Il backend è già pronto a fornire alla UI anche il Pre-Check. Manca soltanto la resa grafica del semaforo e dei motivi nelle card.
 
 ## Come decidiamo ONLINE/OFFLINE
 
@@ -78,14 +95,16 @@ Il flusso desiderato resta:
 
 ## Stato dell'implementazione
 
-**Completato:** Agent **v0.5**; heartbeat; reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza esito; Reboot Sessions; API dashboard; ONLINE/OFFLINE server-side; chiave dashboard separata; UI mobile `monitor.html`; prima SCAN read-only; **esecuzione automatica del Pre-Check all'avvio e ogni 6 ore; risultato Pre-Check allegato agli heartbeat**.
+**Completato:** Agent **v0.5**; heartbeat; reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza esito; Reboot Sessions; API dashboard; ONLINE/OFFLINE server-side; chiave dashboard separata; UI mobile `monitor.html`; prima SCAN read-only; esecuzione automatica del Pre-Check all'avvio e ogni 6 ore; risultato Pre-Check allegato agli heartbeat; **persistenza del Pre-Check in `PC Monitor`; mantenimento dell'ultimo Pre-Check se un heartbeat non lo contiene; esposizione Pre-Check nell'API Dashboard; contatori BLOCCATO/ATTENZIONE lato API**.
 
-**Da implementare/testare:** persistenza del blocco `preCheck` nel backend; campi Pre-Check nell'API Dashboard; semaforo `OK/ATTENZIONE/BLOCCATO` sulle card; test end-to-end su un PC reale; controlli avanzati profili/SID; autenticazione multiutente futura.
+**Da implementare/testare:** semaforo `OK/ATTENZIONE/BLOCCATO` sulle card; test end-to-end su un PC reale; controlli avanzati profili/SID; autenticazione multiutente futura.
 
-**Prossimo passo tecnico:** insegnare ad Apps Script a ricevere e conservare `preCheck`, mantenendo `scannedAtUtc`, stato, blocker/warning e dettagli essenziali; poi esporre questi dati nell'API e mostrare il semaforo sulla card del PC.
+**Prossimo passo tecnico:** aggiornare `monitor.html` per usare `preCheck.status`, mostrare blocker/warning in modo compatto e portare i PC `BLOCCATO` o `ATTENZIONE` nella gerarchia delle priorità della console.
 
 ## Per Pietro: cosa stiamo costruendo
 
-La centrale non deve limitarsi a dirti se un PC è acceso. Deve dirti anche se è **pronto per essere aggiornato**. Da oggi il piccolo Agent che già manda il battito esegue da solo, con calma, anche il controllo preliminare: una volta all'avvio e poi ogni sei ore.
+La centrale non deve limitarsi a dirti se un PC è acceso. Deve dirti anche se è **pronto per essere aggiornato**.
 
-In pratica il PC continua a dire «sono vivo», ma adesso può portarsi dietro anche un foglietto diagnostico: «UEFI sì, GPT sì, TPM 2.0 sì, spazio sufficiente, AnyDesk presente: OK», oppure «attenzione» / «bloccato» con il motivo. Nel prossimo passaggio faremo leggere quel foglietto alla centrale e comparirà direttamente sul telefono.
+Ora il PC esegue il controllo preliminare e la centrale sa conservarlo. In pratica ogni macchina può dire: «sono online e il mio ultimo controllo dice UEFI sì, GPT sì, TPM 2.0 sì, spazio sufficiente: OK», oppure «sono online ma sono BLOCCATO perché il disco non è GPT».
+
+La differenza rispetto al passaggio precedente è importante: quel foglietto diagnostico non rimane più soltanto dentro l'Agent. È arrivato fino al backend e all'API. Nel prossimo passaggio lo renderemo immediatamente visibile sul telefono con il semaforo verde/giallo/rosso e con il motivo, senza dover aprire Google Sheets.
