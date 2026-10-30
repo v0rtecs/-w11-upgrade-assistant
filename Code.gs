@@ -51,14 +51,15 @@ function getDashboardData_(ss) {
     });
   }
   const pcs=[];
-  if(monitor.getLastRow()>=2) monitor.getRange(2,1,monitor.getLastRow()-1,13).getValues().forEach(r=>{
+  if(monitor.getLastRow()>=2) monitor.getRange(2,1,monitor.getLastRow()-1,25).getValues().forEach(r=>{
     const contact=r[4] instanceof Date?r[4]:null, age=contact?Math.max(0,Math.round((now-contact)/1000)):null;
     const rawStatus=String(r[3]||''), connectivity=age!==null&&age<=ONLINE_AFTER_SEC?'ONLINE':'OFFLINE';
     const lr=lastReboots[String(r[0]||'')]||{};
-    pcs.push({agentId:String(r[0]||''),pc:String(r[1]||''),connectivity,agentStatus:rawStatus,lastContactUtc:contact?contact.toISOString():null,lastContactAgeSec:age,rebootPending:rawStatus==='REBOOT_PENDING',windows:String(r[7]||''),build:String(r[8]||''),updateStatus:String(r[9]||''),updateTitle:String(r[10]||''),lastReboot:{sessionId:lr.sessionId||null,durationMin:lr.durationMin===undefined?null:lr.durationMin,outcome:lr.outcome||null,updateStatus:lr.updateStatus||null,updateTitle:lr.updateTitle||null}});
+    const preCheckStatus=String(r[14]||'');
+    pcs.push({agentId:String(r[0]||''),pc:String(r[1]||''),connectivity,agentStatus:rawStatus,lastContactUtc:contact?contact.toISOString():null,lastContactAgeSec:age,rebootPending:rawStatus==='REBOOT_PENDING',windows:String(r[7]||''),build:String(r[8]||''),updateStatus:String(r[9]||''),updateTitle:String(r[10]||''),preCheck:{scannedAtUtc:String(r[13]||'')||null,status:preCheckStatus||null,blockers:parseJsonArray_(r[15]),warnings:parseJsonArray_(r[16]),manufacturer:String(r[17]||''),model:String(r[18]||''),cpu:String(r[19]||''),ramGB:numberOrNull_(r[20]),firmware:String(r[21]||''),partitionStyle:String(r[22]||''),tpmVersion:String(r[23]||''),secureBoot:String(r[24]||''),systemDriveFreeGB:numberOrNull_(r[25])},lastReboot:{sessionId:lr.sessionId||null,durationMin:lr.durationMin===undefined?null:lr.durationMin,outcome:lr.outcome||null,updateStatus:lr.updateStatus||null,updateTitle:lr.updateTitle||null}});
   });
   pcs.sort((a,b)=>a.pc.localeCompare(b.pc));
-  return json_({ok:true,generatedAtUtc:now.toISOString(),onlineThresholdSec:ONLINE_AFTER_SEC,summary:{total:pcs.length,online:pcs.filter(x=>x.connectivity==='ONLINE').length,offline:pcs.filter(x=>x.connectivity==='OFFLINE').length,rebootPending:pcs.filter(x=>x.rebootPending).length,updateFailed:pcs.filter(x=>x.updateStatus==='UPDATE_FAILED').length},pcs});
+  return json_({ok:true,generatedAtUtc:now.toISOString(),onlineThresholdSec:ONLINE_AFTER_SEC,summary:{total:pcs.length,online:pcs.filter(x=>x.connectivity==='ONLINE').length,offline:pcs.filter(x=>x.connectivity==='OFFLINE').length,rebootPending:pcs.filter(x=>x.rebootPending).length,updateFailed:pcs.filter(x=>x.updateStatus==='UPDATE_FAILED').length,preCheckBlocked:pcs.filter(x=>x.preCheck.status==='BLOCCATO').length,preCheckWarning:pcs.filter(x=>x.preCheck.status==='ATTENZIONE').length},pcs});
 }
 
 function handleHeartbeat_(ss, body) {
@@ -68,12 +69,17 @@ function handleHeartbeat_(ss, body) {
   const status=String(body.status||'ONLINE'),updateStatus=String(body.updateStatus||''),updateTitle=String(body.updateTitle||''),updateResultCode=String(body.updateResultCode||''),updateDateUtc=String(body.updateDateUtc||'');
   if(status==='REBOOT_PENDING')ensureOpenRebootSession_(rebootSheet,agentId,String(body.hostName||''),now);
   if(status==='ONLINE_AFTER_REBOOT')closeRebootSession_(rebootSheet,agentId,String(body.hostName||''),now,previousContact,String(body.bootTimeUtc||''),updateStatus,updateTitle,updateResultCode,updateDateUtc);
-  const values=[[agentId,String(body.hostName||''),String(body.agentVersion||''),status,now,String(body.timestampUtc||''),String(body.bootTimeUtc||''),String(body.windows||''),String(body.build||''),updateStatus,updateTitle,updateResultCode,updateDateUtc]];
+  const oldPre=row?sheet.getRange(row,14,1,12).getValues()[0]:new Array(12).fill('');
+  const pre=body.preCheck&&typeof body.preCheck==='object'?preCheckValues_(body.preCheck):oldPre;
+  const values=[[agentId,String(body.hostName||''),String(body.agentVersion||''),status,now,String(body.timestampUtc||''),String(body.bootTimeUtc||''),String(body.windows||''),String(body.build||''),updateStatus,updateTitle,updateResultCode,updateDateUtc].concat(pre)];
   if(row)sheet.getRange(row,1,1,values[0].length).setValues(values);else sheet.getRange(sheet.getLastRow()+1,1,1,values[0].length).setValues(values);
-  return json_({ok:true,agentId,serverTimeUtc:now.toISOString(),previousStatus});
+  return json_({ok:true,agentId,serverTimeUtc:now.toISOString(),previousStatus,preCheckStored:!!body.preCheck});
 }
 
-function getOrCreateMonitorSheet_(ss){const h=['Agent ID','PC','Agent Version','Stato','Ultimo contatto server','Timestamp Agent UTC','Boot UTC','Windows','Build','Update Status','Update Title','Update Result Code','Update Date UTC'];let s=ss.getSheetByName(MONITOR_SHEET);if(!s){s=ss.insertSheet(MONITOR_SHEET);s.appendRow(h);s.setFrozenRows(1);}else ensureHeaders_(s,h);return s;}
+function preCheckValues_(p){return [String(p.scannedAtUtc||''),String(p.status||''),JSON.stringify(Array.isArray(p.blockers)?p.blockers:[]),JSON.stringify(Array.isArray(p.warnings)?p.warnings:[]),String(p.manufacturer||''),String(p.model||''),String(p.cpu||''),p.ramGB===null||p.ramGB===undefined?'':Number(p.ramGB),String(p.firmware||''),String(p.partitionStyle||''),String(p.tpmVersion||''),String(p.secureBoot||''),p.systemDriveFreeGB===null||p.systemDriveFreeGB===undefined?'':Number(p.systemDriveFreeGB)];}
+function parseJsonArray_(v){try{const a=JSON.parse(String(v||'[]'));return Array.isArray(a)?a:[];}catch(e){return [];}}
+function numberOrNull_(v){return v===''||v===null||v===undefined?null:Number(v);}
+function getOrCreateMonitorSheet_(ss){const h=['Agent ID','PC','Agent Version','Stato','Ultimo contatto server','Timestamp Agent UTC','Boot UTC','Windows','Build','Update Status','Update Title','Update Result Code','Update Date UTC','PreCheck UTC','PreCheck Status','PreCheck Blockers','PreCheck Warnings','Manufacturer','Model','CPU','RAM GB','Firmware','Partition Style','TPM Version','Secure Boot','Free C GB'];let s=ss.getSheetByName(MONITOR_SHEET);if(!s){s=ss.insertSheet(MONITOR_SHEET);s.appendRow(h);s.setFrozenRows(1);}else ensureHeaders_(s,h);return s;}
 function getOrCreateRebootSheet_(ss){const h=['Session ID','Agent ID','PC','Riavvio richiesto','Ultimo contatto prima del rientro','Rientro online','Indisponibilità osservata sec','Indisponibilità min','Boot UTC dopo riavvio','Esito','Update Status','Update Title','Update Result Code','Update Date UTC'];let s=ss.getSheetByName(REBOOT_SHEET);if(!s){s=ss.insertSheet(REBOOT_SHEET);s.appendRow(h);s.setFrozenRows(1);}else ensureHeaders_(s,h);return s;}
 function ensureHeaders_(s,h){if(s.getMaxColumns()<h.length)s.insertColumnsAfter(s.getMaxColumns(),h.length-s.getMaxColumns());s.getRange(1,1,1,h.length).setValues([h]);s.setFrozenRows(1);}
 function ensureOpenRebootSession_(s,id,pc,now){if(findOpenRebootRow_(s,id))return; s.appendRow(['RB-'+Utilities.getUuid().substring(0,8).toUpperCase(),id,pc,now,'','','','','','IN_ATTESA_RIENTRO','','','','']);}
