@@ -51,7 +51,7 @@ function getDashboardData_(ss) {
     });
   }
   const pcs=[];
-  if(monitor.getLastRow()>=2) monitor.getRange(2,1,monitor.getLastRow()-1,25).getValues().forEach(r=>{
+  if(monitor.getLastRow()>=2) monitor.getRange(2,1,monitor.getLastRow()-1,26).getValues().forEach(r=>{
     const contact=r[4] instanceof Date?r[4]:null, age=contact?Math.max(0,Math.round((now-contact)/1000)):null;
     const rawStatus=String(r[3]||''), connectivity=age!==null&&age<=ONLINE_AFTER_SEC?'ONLINE':'OFFLINE';
     const lr=lastReboots[String(r[0]||'')]||{};
@@ -69,7 +69,7 @@ function handleHeartbeat_(ss, body) {
   const status=String(body.status||'ONLINE'),updateStatus=String(body.updateStatus||''),updateTitle=String(body.updateTitle||''),updateResultCode=String(body.updateResultCode||''),updateDateUtc=String(body.updateDateUtc||'');
   if(status==='REBOOT_PENDING')ensureOpenRebootSession_(rebootSheet,agentId,String(body.hostName||''),now);
   if(status==='ONLINE_AFTER_REBOOT')closeRebootSession_(rebootSheet,agentId,String(body.hostName||''),now,previousContact,String(body.bootTimeUtc||''),updateStatus,updateTitle,updateResultCode,updateDateUtc);
-  const oldPre=row?sheet.getRange(row,14,1,12).getValues()[0]:new Array(12).fill('');
+  const oldPre=row?sheet.getRange(row,14,1,13).getValues()[0]:new Array(13).fill('');
   const pre=body.preCheck&&typeof body.preCheck==='object'?preCheckValues_(body.preCheck):oldPre;
   const values=[[agentId,String(body.hostName||''),String(body.agentVersion||''),status,now,String(body.timestampUtc||''),String(body.bootTimeUtc||''),String(body.windows||''),String(body.build||''),updateStatus,updateTitle,updateResultCode,updateDateUtc].concat(pre)];
   if(row)sheet.getRange(row,1,1,values[0].length).setValues(values);else sheet.getRange(sheet.getLastRow()+1,1,1,values[0].length).setValues(values);
