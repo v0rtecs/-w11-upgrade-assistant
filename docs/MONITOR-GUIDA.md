@@ -8,11 +8,11 @@ La catena principale è:
 
 L'Agent osserva Windows e manda heartbeat. Il backend conserva stato, riavvii, durata ed esito Windows Update. `monitor.html` trasforma questi dati in schede leggibili dal telefono.
 
-Con l'Agent v0.5 anche la SCAN Windows 11 read-only percorre ora la catena fino alla centrale:
+Con l'Agent v0.5 anche la SCAN Windows 11 read-only percorre tutta la catena:
 
-`PC → Get-W11PreCheck.ps1 → Agent → heartbeat → Apps Script → PC Monitor → API Dashboard`
+`PC → Get-W11PreCheck.ps1 → Agent → heartbeat → Apps Script → PC Monitor → API Dashboard → semaforo sulla card`
 
-Il backend conserva l'ultimo Pre-Check valido per ogni PC e lo espone all'API. Il prossimo passaggio è puramente visivo: mostrare il semaforo e i motivi direttamente sulle card di `monitor.html`.
+Il backend conserva l'ultimo Pre-Check valido per ogni PC e la mini console ora lo mostra direttamente.
 
 ## Che cos'è l'Agent
 
@@ -38,32 +38,27 @@ L'Agent esegue automaticamente questa scansione all'avvio e poi ogni **6 ore**. 
 
 Fra una scansione e l'altra l'Agent conserva in memoria l'ultimo risultato valido e lo allega agli heartbeat. Se una scansione fallisce, non cancella immediatamente il precedente risultato valido: registra l'errore nel log e riprova al ciclo previsto.
 
-### Cosa fa adesso la centrale con il Pre-Check
+### Cosa fa la centrale con il Pre-Check
 
-Apps Script riconosce l'oggetto `preCheck` ricevuto dall'Agent e conserva in `PC Monitor`:
+Apps Script riconosce l'oggetto `preCheck` ricevuto dall'Agent e conserva in `PC Monitor` data/ora, stato, blocker/warning, produttore/modello/CPU, RAM, firmware, partizionamento, TPM, Secure Boot e spazio libero.
 
-- data/ora della scansione;
-- stato `OK`, `ATTENZIONE` o `BLOCCATO`;
-- blocker e warning;
-- produttore, modello e CPU;
-- RAM;
-- firmware UEFI/Legacy e GPT/MBR;
-- versione TPM e stato Secure Boot;
-- spazio libero su C:.
-
-Se un heartbeat successivo non contiene `preCheck`, il backend **mantiene l'ultimo risultato conosciuto** invece di cancellarlo. Questo è importante perché il controllo completo viene eseguito ogni sei ore, mentre gli heartbeat arrivano ogni 30 secondi.
-
-L'API Dashboard restituisce ora un oggetto `preCheck` per ciascun PC e aggiunge due contatori generali: `preCheckBlocked` e `preCheckWarning`. In questo modo l'interfaccia non dovrà ricostruire o reinterpretare i dati grezzi del foglio.
+Se un heartbeat successivo non contiene `preCheck`, il backend mantiene l'ultimo risultato conosciuto. L'API Dashboard restituisce l'oggetto `preCheck` e i contatori `preCheckBlocked` e `preCheckWarning`.
 
 ## La mini console mobile
 
-`monitor.html` mostra cinque contatori: PC totali, online, offline, reboot pending e update falliti. Sotto crea una card per ogni PC con ultimo contatto, Windows/build, esito update e durata dell'ultimo reboot.
+`monitor.html` mostra ora sette contatori: PC totali, online, offline, reboot pending, update falliti, **Pre-Check bloccati** e **Pre-Check in attenzione**.
 
-Le eccezioni vengono portate in cima con priorità `UPDATE_FAILED → REBOOT_PENDING → OFFLINE → ONLINE`. La pagina si aggiorna automaticamente ogni 30 secondi ed è disponibile anche un aggiornamento manuale.
+Ogni card mostra due stati distinti: connettività (`ONLINE/OFFLINE`) e semaforo di preparazione Windows 11 (`PRE-CHECK OK`, `ATTENZIONE`, `BLOCCATO` oppure `N/D`). Sotto il semaforo vengono mostrati, quando disponibili, firmware, partizionamento, TPM, Secure Boot, spazio libero e data della scansione. I motivi di blocco e gli avvisi sono evidenziati senza dover aprire Google Sheets.
+
+La gerarchia delle criticità è ora:
+
+`UPDATE_FAILED → PRE-CHECK BLOCCATO → REBOOT_PENDING → OFFLINE → PRE-CHECK ATTENZIONE → normale`
+
+Questa scelta serve a portare in cima prima ciò che richiede un intervento concreto. Un PC online ma tecnicamente bloccato per l'upgrade non deve perdersi in fondo alla lista soltanto perché sta rispondendo correttamente agli heartbeat.
+
+La pagina continua ad aggiornarsi automaticamente ogni 30 secondi ed è disponibile anche l'aggiornamento manuale.
 
 La console usa una `MONITOR_DASHBOARD_KEY` separata dalla chiave degli Agent. Nella versione prototipo la chiave dashboard è conservata nel `localStorage` del dispositivo; prima di una distribuzione multiutente servirà autenticazione vera.
-
-Il backend è già pronto a fornire alla UI anche il Pre-Check. Manca soltanto la resa grafica del semaforo e dei motivi nelle card.
 
 ## Come decidiamo ONLINE/OFFLINE
 
@@ -95,16 +90,22 @@ Il flusso desiderato resta:
 
 ## Stato dell'implementazione
 
-**Completato:** Agent **v0.5**; heartbeat; reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza esito; Reboot Sessions; API dashboard; ONLINE/OFFLINE server-side; chiave dashboard separata; UI mobile `monitor.html`; prima SCAN read-only; esecuzione automatica del Pre-Check all'avvio e ogni 6 ore; risultato Pre-Check allegato agli heartbeat; **persistenza del Pre-Check in `PC Monitor`; mantenimento dell'ultimo Pre-Check se un heartbeat non lo contiene; esposizione Pre-Check nell'API Dashboard; contatori BLOCCATO/ATTENZIONE lato API**.
+**Completato:** Agent **v0.5**; heartbeat; reboot richiesto; rientro dopo nuovo boot; misura indisponibilità; lettura cronologia Windows Update; persistenza esito; Reboot Sessions; API dashboard; ONLINE/OFFLINE server-side; chiave dashboard separata; UI mobile `monitor.html`; prima SCAN read-only; esecuzione automatica del Pre-Check all'avvio e ogni 6 ore; risultato Pre-Check allegato agli heartbeat; persistenza del Pre-Check; mantenimento dell'ultimo risultato; esposizione nell'API; contatori BLOCCATO/ATTENZIONE; **semaforo Pre-Check sulle card; motivi di blocco/warning visibili; ordinamento della console aggiornato in base alla gravità del Pre-Check**.
 
-**Da implementare/testare:** semaforo `OK/ATTENZIONE/BLOCCATO` sulle card; test end-to-end su un PC reale; controlli avanzati profili/SID; autenticazione multiutente futura.
+**Da implementare/testare:** test end-to-end su un PC reale; controllo preciso della compatibilità CPU Windows 11; controlli avanzati profili/SID; autenticazione multiutente futura.
 
-**Prossimo passo tecnico:** aggiornare `monitor.html` per usare `preCheck.status`, mostrare blocker/warning in modo compatto e portare i PC `BLOCCATO` o `ATTENZIONE` nella gerarchia delle priorità della console.
+**Prossimo passo tecnico:** rendere il Pre-Check più affidabile aggiungendo il controllo della CPU rispetto ai requisiti Windows 11 senza trasformare il nostro semaforo in una falsa certificazione; poi testare l'intera catena su un PC reale.
 
 ## Per Pietro: cosa stiamo costruendo
 
-La centrale non deve limitarsi a dirti se un PC è acceso. Deve dirti anche se è **pronto per essere aggiornato**.
+La centrale non ti dice più soltanto se il PC è acceso. Adesso ti dice anche, a colpo d'occhio, **se quel computer sembra pronto per il lavoro di upgrade**.
 
-Ora il PC esegue il controllo preliminare e la centrale sa conservarlo. In pratica ogni macchina può dire: «sono online e il mio ultimo controllo dice UEFI sì, GPT sì, TPM 2.0 sì, spazio sufficiente: OK», oppure «sono online ma sono BLOCCATO perché il disco non è GPT».
+Sulla stessa scheda puoi vedere per esempio:
 
-La differenza rispetto al passaggio precedente è importante: quel foglietto diagnostico non rimane più soltanto dentro l'Agent. È arrivato fino al backend e all'API. Nel prossimo passaggio lo renderemo immediatamente visibile sul telefono con il semaforo verde/giallo/rosso e con il motivo, senza dover aprire Google Sheets.
+`🟢 ONLINE   🔴 BLOCCATO`
+
+`Legacy · MBR · TPM 2.0 · 78 GB liberi`
+
+`Blocco: firmware non UEFI · disco di sistema non GPT`
+
+Questo è utile perché ONLINE e PRONTO sono due cose completamente diverse. Un computer può funzionare perfettamente durante la giornata ma avere una configurazione che ci impedisce di procedere serenamente con Windows 11. Ora la mini console rende questa differenza immediatamente visibile e porta automaticamente quel PC fra le prime macchine da controllare.
