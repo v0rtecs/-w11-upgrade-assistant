@@ -1,4 +1,4 @@
-# W11 Upgrade Assistant - read-only Pre-Check v0.1
+# W11 Upgrade Assistant - read-only Pre-Check v0.2
 # Raccolta locale: non modifica registro, firmware, servizi o configurazione.
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -29,6 +29,31 @@ function Get-TpmState {
     } catch { return [ordered]@{present=$null;ready=$null;version=$null} }
 }
 
+function Get-CpuCompatibilityHint([string]$CpuName) {
+    # Indicazione prudente, non certificazione Microsoft modello-per-modello.
+    # Serve a evitare un falso verde: i casi non riconosciuti restano DA_VERIFICARE.
+    $n = ($CpuName -replace '\(R\)|\(TM\)|®|™',' ' -replace '\s+',' ').Trim()
+
+    if ($n -match '(?i)Intel.*Core.*i[3579][- ]?(\d{4,5})') {
+        $model = $Matches[1]
+        $gen = if ($model.Length -eq 5) { [int]$model.Substring(0,2) } else { [int]$model.Substring(0,1) }
+        if ($gen -ge 8) { return [ordered]@{status='FAMIGLIA_COMPATIBILE'; detail="Intel Core generazione $gen"} }
+        return [ordered]@{status='DA_VERIFICARE'; detail="Intel Core generazione $gen: modello da confrontare con elenco Microsoft"}
+    }
+
+    if ($n -match '(?i)AMD.*Ryzen.*[3579].*\b(\d{4})[A-Z0-9]*\b') {
+        $model = [int]$Matches[1]
+        if ($model -ge 3000) { return [ordered]@{status='FAMIGLIA_COMPATIBILE'; detail="AMD Ryzen serie $model"} }
+        return [ordered]@{status='DA_VERIFICARE'; detail="AMD Ryzen serie $model: modello da confrontare con elenco Microsoft"}
+    }
+
+    if ($n -match '(?i)Snapdragon.*X') {
+        return [ordered]@{status='FAMIGLIA_COMPATIBILE'; detail='Qualcomm Snapdragon X'}
+    }
+
+    return [ordered]@{status='DA_VERIFICARE'; detail='CPU non classificata automaticamente'}
+}
+
 $os = Get-CimInstance Win32_OperatingSystem
 $cs = Get-CimInstance Win32_ComputerSystem
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
@@ -49,6 +74,7 @@ $anyDeskExe = @(
 ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 $anyDesk = [bool]($anyDeskService -or $anyDeskExe)
 $rebootPending = Get-RebootPending
+$cpuHint = Get-CpuCompatibilityHint ([string]$cpu.Name)
 
 $reasons = New-Object System.Collections.Generic.List[string]
 $warnings = New-Object System.Collections.Generic.List[string]
@@ -63,13 +89,14 @@ elseif ($secureBoot -eq 'NON_DISPONIBILE' -and $firmware -eq 'UEFI') { $warnings
 if ($freeGB -ne $null -and $freeGB -lt 30) { $reasons.Add('Meno di 30 GB liberi su C:') }
 elseif ($freeGB -ne $null -and $freeGB -lt 45) { $warnings.Add('Spazio libero ridotto su C:') }
 if ($ramGB -lt 4) { $reasons.Add('RAM inferiore a 4 GB') }
+if ($cpuHint.status -eq 'DA_VERIFICARE') { $warnings.Add('Compatibilità CPU da verificare: ' + $cpuHint.detail) }
 if (-not $anyDesk) { $warnings.Add('AnyDesk non rilevato') }
 if ($rebootPending) { $warnings.Add('Riavvio già pendente') }
 
 $status = if ($reasons.Count -gt 0) { 'BLOCCATO' } elseif ($warnings.Count -gt 0) { 'ATTENZIONE' } else { 'OK' }
 
 $result = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     scannedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     status = $status
     blockers = @($reasons)
@@ -78,6 +105,8 @@ $result = [ordered]@{
     manufacturer = [string]$cs.Manufacturer
     model = [string]$cs.Model
     cpu = [string]$cpu.Name
+    cpuCompatibility = $cpuHint.status
+    cpuCompatibilityDetail = $cpuHint.detail
     ramGB = $ramGB
     windows = [string]$os.Caption
     build = [string]$os.BuildNumber
