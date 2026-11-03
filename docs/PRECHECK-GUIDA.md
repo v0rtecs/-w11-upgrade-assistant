@@ -57,3 +57,15 @@ Prima la CPU veniva soltanto raccolta come testo. Ora partecipa realmente alla v
 ## Prossimo passo
 
 Portare i due nuovi campi CPU attraverso backend e API fino alla card mobile. In seguito potremo sostituire il controllo per famiglia con un catalogo/versione aggiornabile basato sugli elenchi Microsoft, mantenendo comunque una modalità `DA_VERIFICARE` per i casi non certi.
+
+## Aggiornamento v0.3 — catalogo CPU separato (3 novembre 2026)
+
+La CPU viene ora confrontata con il file `agent/cpu-catalog.json`, distinto dallo script. Questo è il primo passo per aggiornare le regole senza riscrivere la SCAN. Il catalogo ha una versione e un elenco `exactCpuNames` di nomi completi: niente scorciatoie basate soltanto sulla generazione.
+
+**Per ora l'elenco è intenzionalmente vuoto.** Non abbiamo ancora validato e inserito modelli specifici contro le liste ufficiali Microsoft. Di conseguenza tutte le CPU restituiscono `DA_VERIFICARE` e il semaforo rimane almeno giallo. Non è un guasto: è una protezione contro falsi verdi. Quando inseriremo nomi esatti verificati, una corrispondenza darà `CATALOGO_LOCALE`, che **non significa certificazione ufficiale**.
+
+Se il file manca, è corrotto o ha uno schema inatteso, lo script continua senza bloccare gli heartbeat: segnala `DA_VERIFICARE` con il motivo e la versione del catalogo (`ASSENTE` o `ERRORE`). La SCAN resta in sola lettura. Il JSON del Pre-Check ora è `schemaVersion = 3` e include `cpuCatalogVersion` oltre ai campi già noti.
+
+**Come aggiornarlo:** verificare un modello CPU completo sugli elenchi Microsoft appropriati alla versione Windows 11, inserirne il nome esatto in `exactCpuNames`, aggiornare `catalogVersion`, validare il JSON e distribuire il solo catalogo insieme ai file dell'Agent. La distribuzione automatica non è ancora implementata: oggi il file deve essere copiato accanto allo script su ciascun PC.
+
+**Prossimo passo:** creare una procedura controllata di aggiornamento e validazione del catalogo, poi fare test reali con CPU note, sconosciute e file mancante. Il vecchio controllo euristico per generazione resta nel codice ma non è più utilizzato per decidere il semaforo.
