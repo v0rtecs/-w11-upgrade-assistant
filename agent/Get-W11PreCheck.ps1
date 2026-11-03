@@ -1,4 +1,4 @@
-# W11 Upgrade Assistant - read-only Pre-Check v0.2
+# W11 Upgrade Assistant - read-only Pre-Check v0.3
 # Raccolta locale: non modifica registro, firmware, servizi o configurazione.
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -54,6 +54,30 @@ function Get-CpuCompatibilityHint([string]$CpuName) {
     return [ordered]@{status='DA_VERIFICARE'; detail='CPU non classificata automaticamente'}
 }
 
+function Get-CpuCatalogDecision([string]$CpuName) {
+    # Catalogo locale aggiornabile indipendentemente dallo script.
+    # Solo corrispondenze esatte e verificate; nessuna deduzione per generazione.
+    $catalogPath = Join-Path $PSScriptRoot 'cpu-catalog.json'
+    if (-not (Test-Path -LiteralPath $catalogPath)) {
+        return [ordered]@{status='DA_VERIFICARE';detail='Catalogo CPU assente';catalogVersion='ASSENTE'}
+    }
+    try {
+        $catalog = Get-Content -LiteralPath $catalogPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ([int]$catalog.schemaVersion -ne 1 -or -not $catalog.catalogVersion -or $null -eq $catalog.exactCpuNames) {
+            throw 'Schema catalogo non valido'
+        }
+        $name = ($CpuName -replace '\\s+', ' ').Trim()
+        foreach ($entry in @($catalog.exactCpuNames)) {
+            if ([string]::Equals($name, ([string]$entry -replace '\\s+', ' ').Trim(), [System.StringComparison]::OrdinalIgnoreCase)) {
+                return [ordered]@{status='CATALOGO_LOCALE';detail='Corrispondenza esatta nel catalogo locale; verificare sempre requisiti Microsoft';catalogVersion=[string]$catalog.catalogVersion}
+            }
+        }
+        return [ordered]@{status='DA_VERIFICARE';detail='CPU non presente nel catalogo locale verificato';catalogVersion=[string]$catalog.catalogVersion}
+    } catch {
+        return [ordered]@{status='DA_VERIFICARE';detail='Catalogo CPU non leggibile o non valido';catalogVersion='ERRORE'}
+    }
+}
+
 $os = Get-CimInstance Win32_OperatingSystem
 $cs = Get-CimInstance Win32_ComputerSystem
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
@@ -74,7 +98,7 @@ $anyDeskExe = @(
 ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 $anyDesk = [bool]($anyDeskService -or $anyDeskExe)
 $rebootPending = Get-RebootPending
-$cpuHint = Get-CpuCompatibilityHint ([string]$cpu.Name)
+$cpuHint = Get-CpuCatalogDecision ([string]$cpu.Name)
 
 $reasons = New-Object System.Collections.Generic.List[string]
 $warnings = New-Object System.Collections.Generic.List[string]
@@ -96,7 +120,7 @@ if ($rebootPending) { $warnings.Add('Riavvio già pendente') }
 $status = if ($reasons.Count -gt 0) { 'BLOCCATO' } elseif ($warnings.Count -gt 0) { 'ATTENZIONE' } else { 'OK' }
 
 $result = [ordered]@{
-    schemaVersion = 2
+    schemaVersion = 3
     scannedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     status = $status
     blockers = @($reasons)
@@ -107,6 +131,7 @@ $result = [ordered]@{
     cpu = [string]$cpu.Name
     cpuCompatibility = $cpuHint.status
     cpuCompatibilityDetail = $cpuHint.detail
+    cpuCatalogVersion = $cpuHint.catalogVersion
     ramGB = $ramGB
     windows = [string]$os.Caption
     build = [string]$os.BuildNumber
