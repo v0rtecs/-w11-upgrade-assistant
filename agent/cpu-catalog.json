@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "2026-11-03-initial",
+  "policy": "exact-match-only; locally reviewed; not official Microsoft certification",
+  "exactCpuNames": []
+}
