@@ -69,3 +69,13 @@ Se il file manca, è corrotto o ha uno schema inatteso, lo script continua senza
 **Come aggiornarlo:** verificare un modello CPU completo sugli elenchi Microsoft appropriati alla versione Windows 11, inserirne il nome esatto in `exactCpuNames`, aggiornare `catalogVersion`, validare il JSON e distribuire il solo catalogo insieme ai file dell'Agent. La distribuzione automatica non è ancora implementata: oggi il file deve essere copiato accanto allo script su ciascun PC.
 
 **Prossimo passo:** creare una procedura controllata di aggiornamento e validazione del catalogo, poi fare test reali con CPU note, sconosciute e file mancante. Il vecchio controllo euristico per generazione resta nel codice ma non è più utilizzato per decidere il semaforo.
+
+## Aggiornamento v0.4 — controllo del catalogo prima della distribuzione (4 novembre 2026)
+
+Abbiamo aggiunto `agent/Validate-CpuCatalog.ps1`. È un **controllore offline**: legge il catalogo, verifica che sia JSON valido, che contenga i campi previsti, una versione riconoscibile e un elenco di CPU senza voci vuote o duplicate. Non installa nulla e non modifica i computer.
+
+**Come usarlo:** apri PowerShell nella cartella `agent` ed esegui `powershell.exe -NoProfile -File .\Validate-CpuCatalog.ps1`. Se compare **VALIDO**, il file è strutturalmente corretto; se compare **NON VALIDO**, non distribuirlo. Il comando termina con codice 0 in caso di successo e 1 in caso di errore, utile anche per futuri controlli automatici.
+
+**Attenzione:** VALIDO **non significa che le CPU elencate siano ufficialmente supportate**. Il controllo non confronta i nomi con Microsoft: verifica solo il formato e i duplicati. Per aggiungere una CPU occorre prima documentare la verifica manuale sul relativo elenco ufficiale e sulla versione di Windows 11 interessata. L'elenco iniziale rimane vuoto. Non è stata ancora implementata la distribuzione automatica.
+
+**Prossimo passo:** aggiungere test automatici con cataloghi volutamente difettosi e correggere la normalizzazione dei nomi CPU nel Pre-Check; poi preparare un aggiornamento del catalogo con verifica d'integrità e rollback.
