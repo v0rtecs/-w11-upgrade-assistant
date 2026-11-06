@@ -63,12 +63,25 @@ function Get-CpuCatalogDecision([string]$CpuName) {
     }
     try {
         $catalog = Get-Content -LiteralPath $catalogPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-        if ([int]$catalog.schemaVersion -ne 1 -or -not $catalog.catalogVersion -or $null -eq $catalog.exactCpuNames) {
-            throw 'Schema catalogo non valido'
+        # Stessi controlli strutturali del validatore offline: fail closed.
+        $props = @($catalog.PSObject.Properties.Name)
+        foreach ($key in @('schemaVersion','catalogVersion','policy','exactCpuNames')) {
+            if ($props -cnotcontains $key) { throw "Campo obbligatorio mancante: $key" }
         }
-        $name = ($CpuName -replace '\\s+', ' ').Trim()
+        if ($catalog.schemaVersion -isnot [int] -or $catalog.schemaVersion -ne 1) { throw 'schemaVersion non valido' }
+        if ($catalog.catalogVersion -isnot [string] -or $catalog.catalogVersion -notmatch '^\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+$') { throw 'catalogVersion non valido' }
+        if ($catalog.policy -cne 'exact-match-only; locally reviewed; not official Microsoft certification') { throw 'policy non valida' }
+        if ($null -eq $catalog.exactCpuNames -or $catalog.exactCpuNames -isnot [array]) { throw 'exactCpuNames non e un array' }
+        $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $catalog.exactCpuNames) {
+            if ($entry -isnot [string] -or [string]::IsNullOrWhiteSpace($entry)) { throw 'CPU non valida' }
+            if ($entry.Length -gt 180 -or $entry -cne $entry.Trim() -or $entry -match '[\r\n\t]') { throw 'Nome CPU malformato' }
+            $normalized = ($entry -replace '\s+', ' ').Trim()
+            if (-not $seen.Add($normalized)) { throw 'CPU duplicata' }
+        }
+        $name = ($CpuName -replace '\s+', ' ').Trim()
         foreach ($entry in @($catalog.exactCpuNames)) {
-            if ([string]::Equals($name, ([string]$entry -replace '\\s+', ' ').Trim(), [System.StringComparison]::OrdinalIgnoreCase)) {
+            if ([string]::Equals($name, ([string]$entry -replace '\s+', ' ').Trim(), [System.StringComparison]::OrdinalIgnoreCase)) {
                 return [ordered]@{status='CATALOGO_LOCALE';detail='Corrispondenza esatta nel catalogo locale; verificare sempre requisiti Microsoft';catalogVersion=[string]$catalog.catalogVersion}
             }
         }
