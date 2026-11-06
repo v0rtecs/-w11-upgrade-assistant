@@ -79,3 +79,14 @@ Abbiamo aggiunto `agent/Validate-CpuCatalog.ps1`. È un **controllore offline**:
 **Attenzione:** VALIDO **non significa che le CPU elencate siano ufficialmente supportate**. Il controllo non confronta i nomi con Microsoft: verifica solo il formato e i duplicati. Per aggiungere una CPU occorre prima documentare la verifica manuale sul relativo elenco ufficiale e sulla versione di Windows 11 interessata. L'elenco iniziale rimane vuoto. Non è stata ancora implementata la distribuzione automatica.
 
 **Prossimo passo:** aggiungere test automatici con cataloghi volutamente difettosi e correggere la normalizzazione dei nomi CPU nel Pre-Check; poi preparare un aggiornamento del catalogo con verifica d'integrità e rollback.
+
+
+## Aggiornamento v0.5 — catalogo CPU a prova di errore (6 novembre 2026)
+
+Abbiamo chiuso una falla: prima il controllo manuale del catalogo era piu rigoroso della SCAN eseguita sui PC. Ora **la SCAN controlla anche versione, policy, tipo di elenco, nomi vuoti e duplicati** prima di utilizzare una CPU del catalogo. Inoltre uniforma gli spazi nei nomi: `Intel  Core` e `Intel Core` sono trattati nello stesso modo.
+
+**In pratica:** se qualcuno copia per sbaglio un catalogo incompleto o modificato male, la SCAN non dara un verde per quella CPU. Restituira `DA_VERIFICARE` e `cpuCatalogVersion = ERRORE`. Il PC continua comunque a inviare heartbeat: non perdiamo il monitoraggio per un problema nel catalogo.
+
+Abbiamo aggiunto `agent/Test-CpuCatalog.ps1`: da PowerShell nella cartella `agent`, esegui `powershell.exe -NoProfile -File .\Test-CpuCatalog.ps1`. Il programma crea cataloghi temporanei validi e volutamente sbagliati, prova il validatore e li elimina. La scritta `Tutti i test superati` indica che il validatore ha reagito come previsto. **Questi test non dimostrano ancora che la SCAN funzioni su tutti i PC Windows**: occorre un test reale con cataloghi corretti, corrotti e assenti.
+
+**Prossimo passo:** test end-to-end del Pre-Check su Windows e successivamente distribuzione sicura del catalogo, con controllo integrita e ripristino della versione precedente. L'elenco CPU resta intenzionalmente vuoto finche non avremo verificato i singoli modelli.
