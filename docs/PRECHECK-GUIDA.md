@@ -90,3 +90,20 @@ Abbiamo chiuso una falla: prima il controllo manuale del catalogo era piu rigoro
 Abbiamo aggiunto `agent/Test-CpuCatalog.ps1`: da PowerShell nella cartella `agent`, esegui `powershell.exe -NoProfile -File .\Test-CpuCatalog.ps1`. Il programma crea cataloghi temporanei validi e volutamente sbagliati, prova il validatore e li elimina. La scritta `Tutti i test superati` indica che il validatore ha reagito come previsto. **Questi test non dimostrano ancora che la SCAN funzioni su tutti i PC Windows**: occorre un test reale con cataloghi corretti, corrotti e assenti.
 
 **Prossimo passo:** test end-to-end del Pre-Check su Windows e successivamente distribuzione sicura del catalogo, con controllo integrita e ripristino della versione precedente. L'elenco CPU resta intenzionalmente vuoto finche non avremo verificato i singoli modelli.
+
+
+## Aggiornamento v0.6 — installazione controllata del catalogo (7 novembre 2026)
+
+Abbiamo aggiunto `agent/Install-CpuCatalog.ps1`: serve per sostituire il catalogo CPU **senza toccare Windows Update o riavviare il PC**. Non scarica nulla da Internet: il file nuovo va ottenuto prima da una fonte affidabile.
+
+**Come funziona:** controlla che il file sia esattamente quello previsto tramite impronta SHA-256; lo copia in un file temporaneo; usa il validatore esistente; conserva il catalogo precedente come `.bak`; installa il nuovo; ricontrolla. Se l'installazione fallisce dopo aver creato il backup, tenta di ripristinare il vecchio catalogo. Se esiste gia un `.bak` o `.new`, si ferma per non sovrascrivere materiale utile.
+
+**Per Pietro:** l'impronta SHA-256 e come un codice di riconoscimento del file: va ricevuta separatamente da un canale attendibile, non copiata dallo stesso file potenzialmente compromesso. Da PowerShell nella cartella `agent`:
+
+```powershell
+powershell.exe -NoProfile -File .\Install-CpuCatalog.ps1 -SourcePath "C:\Temp\cpu-catalog.json" -ExpectedSha256 "INSERIRE_QUI_64_CARATTERI_ESATTI"
+```
+
+L'impronta di un file puo essere calcolata con `Get-FileHash C:\Temp\cpu-catalog.json -Algorithm SHA256`, ma **calcolarla localmente e riutilizzarla senza confronto con un valore fidato non garantisce l'autenticita**.
+
+Il backup `.bak` resta sul disco dopo il successo e richiede una gestione esplicita prima del prossimo aggiornamento. Non abbiamo ancora implementato download automatico, autenticazione del distributore, firma digitale o protezione da downgrade: **questa e una procedura locale controllata, non ancora un aggiornamento remoto sicuro**. La sostituzione non e atomica rispetto a letture concorrenti dell'Agent: programmarla quando la SCAN non e in esecuzione. Test Windows e prove di guasto/ripristino ancora da eseguire.
