@@ -107,3 +107,20 @@ powershell.exe -NoProfile -File .\Install-CpuCatalog.ps1 -SourcePath "C:\Temp\cp
 L'impronta di un file puo essere calcolata con `Get-FileHash C:\Temp\cpu-catalog.json -Algorithm SHA256`, ma **calcolarla localmente e riutilizzarla senza confronto con un valore fidato non garantisce l'autenticita**.
 
 Il backup `.bak` resta sul disco dopo il successo e richiede una gestione esplicita prima del prossimo aggiornamento. Non abbiamo ancora implementato download automatico, autenticazione del distributore, firma digitale o protezione da downgrade: **questa e una procedura locale controllata, non ancora un aggiornamento remoto sicuro**. La sostituzione non e atomica rispetto a letture concorrenti dell'Agent: programmarla quando la SCAN non e in esecuzione. Test Windows e prove di guasto/ripristino ancora da eseguire.
+
+
+## Aggiornamento v0.7 — prove automatiche dell'installatore (8 novembre 2026)
+
+Abbiamo aggiunto `agent/Test-InstallCpuCatalog.ps1`. È una **palestra di prova**: crea una cartella temporanea, simula cataloghi nuovi e vecchi, lancia l'installatore e controlla il risultato. **Non tocca il catalogo CPU effettivamente usato dai PC.**
+
+Per eseguirlo, apri PowerShell nella cartella `agent` ed esegui:
+
+```powershell
+powershell.exe -NoProfile -File .\Test-InstallCpuCatalog.ps1
+```
+
+Le cinque prove coprono: aggiornamento valido con backup; impronta SHA-256 sbagliata; JSON danneggiato; backup già presente; file temporaneo già presente. Ogni prova controlla anche che il catalogo precedente non sia stato alterato quando l'installazione viene rifiutata. Se tutto va bene compare `5 superati, 0 falliti` e il comando restituisce codice 0.
+
+**Cosa non dimostrano ancora questi test:** non simulano un'interruzione improvvisa dell'alimentazione, un guasto al disco o un errore dopo la creazione del backup; non verificano la concorrenza con una scansione in corso. Il codice dei test è stato aggiunto, ma va ancora eseguito su Windows: finché non vediamo l'esito, non possiamo dichiarare le prove superate.
+
+**Perché serve:** prima di distribuire il catalogo a decine di computer, vogliamo verificare in modo ripetibile che un errore non distrugga le informazioni già presenti. Prossima tappa: prova del ripristino con guasto controllato e gestione dei file .bak rimasti dopo un aggiornamento riuscito.
