@@ -11,7 +11,7 @@ $failed = 0
 function Catalog([string]$version) {
   return ('{"schemaVersion":1,"catalogVersion":"' + $version + '","policy":"exact-match-only; locally reviewed; not official Microsoft certification","exactCpuNames":[]}')
 }
-function Run-Case([string]$name, [bool]$shouldSucceed, [string]$sourceText, [bool]$wrongHash, [bool]$existingBackup, [bool]$existingStage) {
+function Run-Case([string]$name, [bool]$shouldSucceed, [string]$sourceText, [bool]$wrongHash, [bool]$existingBackup, [bool]$existingStage, [bool]$injectFailure = $false) {
   $dir = Join-Path $root ([guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $dir | Out-Null
   $src = Join-Path $dir 'incoming.json'
@@ -23,7 +23,9 @@ function Run-Case([string]$name, [bool]$shouldSucceed, [string]$sourceText, [boo
   if ($existingStage) { [IO.File]::WriteAllText("$dst.new", 'stage da conservare') }
   $hash = (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash
   if ($wrongHash) { $hash = '0' * 64 }
-  $output = & $hostExe -NoProfile -NonInteractive -File $installer -SourcePath $src -DestinationPath $dst -ExpectedSha256 $hash 2>&1
+  $argsList = @('-NoProfile','-NonInteractive','-File',$installer,'-SourcePath',$src,'-DestinationPath',$dst,'-ExpectedSha256',$hash)
+  if ($injectFailure) { $argsList += '-TestFailAfterBackup' }
+  $output = & $hostExe @argsList 2>&1
   $exitCode = $LASTEXITCODE
   $success = ($exitCode -eq 0)
   $newText = [IO.File]::ReadAllText($dst)
@@ -34,6 +36,7 @@ function Run-Case([string]$name, [bool]$shouldSucceed, [string]$sourceText, [boo
     $ok = $ok -and ($newText -eq $original)
     if ($existingBackup) { $ok = $ok -and ([IO.File]::ReadAllText("$dst.bak") -eq 'backup da conservare') }
     if ($existingStage) { $ok = $ok -and ([IO.File]::ReadAllText("$dst.new") -eq 'stage da conservare') }
+    if ($injectFailure) { $ok = $ok -and (-not (Test-Path -LiteralPath "$dst.bak")) -and (-not (Test-Path -LiteralPath "$dst.new")) }
   }
   if ($ok) { $script:passed++; Write-Host "PASS: $name" }
   else { $script:failed++; Write-Host "FAIL: $name (exit=$exitCode) $output" }
@@ -44,6 +47,7 @@ try {
   Run-Case 'JSON non valido: nessuna modifica' $false '{broken' $false $false $false
   Run-Case 'backup esistente: non sovrascrivere' $false (Catalog '2026-11-08-new') $false $true $false
   Run-Case 'stage esistente: non sovrascrivere' $false (Catalog '2026-11-08-new') $false $false $true
+  Run-Case 'guasto simulato dopo backup: ripristino' $false (Catalog '2026-11-09-new') $false $false $false $true
   Write-Host "Risultato: $passed superati, $failed falliti."
   if ($failed -gt 0) { exit 1 }
   exit 0
