@@ -4,7 +4,8 @@
 param(
   [Parameter(Mandatory=$true)][string]$SourcePath,
   [Parameter(Mandatory=$true)][ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedSha256,
-  [string]$DestinationPath = (Join-Path $PSScriptRoot 'cpu-catalog.json')
+  [string]$DestinationPath = (Join-Path $PSScriptRoot 'cpu-catalog.json'),
+  [switch]$TestFailAfterBackup
 )
 $ErrorActionPreference = 'Stop'
 $validator = Join-Path $PSScriptRoot 'Validate-CpuCatalog.ps1'
@@ -30,6 +31,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Catalogo attuale non valido: intervento manuale richiesto' }
     Move-Item -LiteralPath $destination -Destination $backup -ErrorAction Stop
     $backupCreated = $true
+    if ($TestFailAfterBackup) { throw 'GUASTO SIMULATO: dopo creazione backup' }
   }
   Move-Item -LiteralPath $stage -Destination $destination -ErrorAction Stop
   & $validator -Path $destination
