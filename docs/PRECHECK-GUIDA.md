@@ -124,3 +124,18 @@ Le cinque prove coprono: aggiornamento valido con backup; impronta SHA-256 sbagl
 **Cosa non dimostrano ancora questi test:** non simulano un'interruzione improvvisa dell'alimentazione, un guasto al disco o un errore dopo la creazione del backup; non verificano la concorrenza con una scansione in corso. Il codice dei test è stato aggiunto, ma va ancora eseguito su Windows: finché non vediamo l'esito, non possiamo dichiarare le prove superate.
 
 **Perché serve:** prima di distribuire il catalogo a decine di computer, vogliamo verificare in modo ripetibile che un errore non distrugga le informazioni già presenti. Prossima tappa: prova del ripristino con guasto controllato e gestione dei file .bak rimasti dopo un aggiornamento riuscito.
+
+
+## Aggiornamento v0.8 — prova reale della logica di ripristino (9 novembre 2026)
+
+L'installatore accetta ora l'opzione **solo per test** `-TestFailAfterBackup`. Dopo aver spostato il vecchio catalogo nel backup, genera volontariamente un errore: il normale gestore degli errori deve riportare il catalogo originale al suo posto. Non usare questa opzione durante installazioni operative.
+
+Il file `agent/Test-InstallCpuCatalog.ps1` comprende ora **sei** scenari, incluso il guasto controllato. La sesta prova verifica che l'installazione fallisca, che il contenuto originale torni identico e che non rimangano file temporanei o backup della prova. Esegui dalla cartella `agent`:
+
+```powershell
+powershell.exe -NoProfile -File .\Test-InstallCpuCatalog.ps1
+```
+
+Il risultato atteso è `6 superati, 0 falliti`. **Attenzione:** il codice è stato aggiornato, ma i test devono ancora essere eseguiti su Windows; non dichiararli superati prima della prova. Questo guasto simulato non dimostra la resistenza a blackout, disco guasto o scansioni contemporanee. In produzione l'installazione rimane manuale e va pianificata fuori dalla scansione Pre-Check.
+
+**Perché è utile:** se un aggiornamento si interrompe *dopo* aver messo da parte il catalogo precedente, vogliamo verificare che il programma sappia recuperarlo, anziché lasciare la macchina senza catalogo. Prossimo passo: gestione sicura dei backup dopo successo e verifica delle letture concorrenti.
