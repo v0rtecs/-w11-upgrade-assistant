@@ -139,3 +139,24 @@ powershell.exe -NoProfile -File .\Test-InstallCpuCatalog.ps1
 Il risultato atteso è `6 superati, 0 falliti`. **Attenzione:** il codice è stato aggiornato, ma i test devono ancora essere eseguiti su Windows; non dichiararli superati prima della prova. Questo guasto simulato non dimostra la resistenza a blackout, disco guasto o scansioni contemporanee. In produzione l'installazione rimane manuale e va pianificata fuori dalla scansione Pre-Check.
 
 **Perché è utile:** se un aggiornamento si interrompe *dopo* aver messo da parte il catalogo precedente, vogliamo verificare che il programma sappia recuperarlo, anziché lasciare la macchina senza catalogo. Prossimo passo: gestione sicura dei backup dopo successo e verifica delle letture concorrenti.
+
+
+## Aggiornamento v0.9 — archiviazione prudente dei backup (10 novembre 2026)
+
+Dopo un aggiornamento riuscito, l'installatore conserva il vecchio catalogo come `.bak`. È una protezione utile, ma un `.bak` lasciato accanto al file attivo impedisce la successiva installazione. Abbiamo quindi aggiunto `agent/Archive-CpuCatalogBackup.ps1`: **non cancella il backup**, lo sposta in una cartella di archivio, con data, ora e parte dell'impronta SHA-256 nel nome.
+
+Prima di spostarlo verifica che il catalogo attivo esista e sia valido, che il backup sia valido e che non sia presente un file `.new` (possibile installazione incompleta). Se qualcosa non torna, si ferma e lascia tutto com'è. L'archiviazione è **manuale**: non avviene automaticamente dopo l'installazione, perché vogliamo prima confermare che il nuovo catalogo funzioni.
+
+**Procedura consigliata:** dopo l'aggiornamento e la verifica del Pre-Check, apri PowerShell nella cartella `agent`. Prima simula l'operazione:
+
+```powershell
+powershell.exe -NoProfile -File .\\Archive-CpuCatalogBackup.ps1 -WhatIf
+```
+
+Se la destinazione indicata è corretta, esegui senza `-WhatIf`:
+
+```powershell
+powershell.exe -NoProfile -File .\\Archive-CpuCatalogBackup.ps1
+```
+
+Il backup precedente resta recuperabile in `agent/catalog-backups`, mentre il nome `.bak` si libera per il prossimo aggiornamento. **Non è un sistema di rollback automatico** e non risolve blackout o letture concorrenti. Non abbiamo ancora eseguito test Windows reali: prima dell'uso su PC aziendali occorre un collaudo su una cartella di prova. Evitare di condividere i cataloghi e i backup fuori dai canali IT autorizzati.
