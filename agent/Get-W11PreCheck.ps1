@@ -58,11 +58,27 @@ function Get-CpuCatalogDecision([string]$CpuName) {
     # Catalogo locale aggiornabile indipendentemente dallo script.
     # Solo corrispondenze esatte e verificate; nessuna deduzione per generazione.
     $catalogPath = Join-Path $PSScriptRoot 'cpu-catalog.json'
-    if (-not (Test-Path -LiteralPath $catalogPath)) {
-        return [ordered]@{status='DA_VERIFICARE';detail='Catalogo CPU assente';catalogVersion='ASSENTE'}
+    # Durante una sostituzione il file puo essere temporaneamente assente.
+    # Riproviamo brevemente, senza modificare il catalogo e senza bloccare l'heartbeat.
+    $catalog = $null
+    $readSucceeded = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            $raw = Get-Content -LiteralPath $catalogPath -Raw -ErrorAction Stop
+            $catalog = $raw | ConvertFrom-Json -ErrorAction Stop
+            $readSucceeded = $true
+            break
+        } catch {
+            if ($attempt -lt 3) { Start-Sleep -Milliseconds 150 }
+        }
+    }
+    if (-not $readSucceeded) {
+        $detail = if (Test-Path -LiteralPath $catalogPath -PathType Leaf) {
+            'Catalogo CPU non leggibile o JSON non valido dopo tre tentativi'
+        } else { 'Catalogo CPU assente dopo tre tentativi' }
+        return [ordered]@{status='DA_VERIFICARE';detail=$detail;catalogVersion='ERRORE'}
     }
     try {
-        $catalog = Get-Content -LiteralPath $catalogPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
         # Stessi controlli strutturali del validatore offline: fail closed.
         $props = @($catalog.PSObject.Properties.Name)
         foreach ($key in @('schemaVersion','catalogVersion','policy','exactCpuNames')) {
