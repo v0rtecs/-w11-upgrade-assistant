@@ -160,3 +160,16 @@ powershell.exe -NoProfile -File .\\Archive-CpuCatalogBackup.ps1
 ```
 
 Il backup precedente resta recuperabile in `agent/catalog-backups`, mentre il nome `.bak` si libera per il prossimo aggiornamento. **Non è un sistema di rollback automatico** e non risolve blackout o letture concorrenti. Non abbiamo ancora eseguito test Windows reali: prima dell'uso su PC aziendali occorre un collaudo su una cartella di prova. Evitare di condividere i cataloghi e i backup fuori dai canali IT autorizzati.
+
+
+## Aggiornamento v1.0 — lettura robusta durante la sostituzione (11 novembre 2026)
+
+**Problema:** mentre l'installatore sposta il vecchio catalogo in backup e mette al suo posto quello nuovo, per un breve istante il file potrebbe non esserci. Una scansione avviata proprio in quell'istante potrebbe segnalare erroneamente un catalogo assente.
+
+**Soluzione:** `Get-W11PreCheck.ps1` ora tenta di leggere e interpretare il catalogo fino a **tre volte**, aspettando 150 millisecondi tra i tentativi falliti. Se il file ricompare, usa il contenuto letto; se continua a mancare o non e leggibile, mostra `DA_VERIFICARE` con `cpuCatalogVersion = ERRORE`. La scansione non scrive mai nel catalogo.
+
+**Per Pietro:** e come controllare nuovamente un documento che un collega sta sostituendo, prima di segnalare che e scomparso. Non nascondiamo pero un problema persistente: dopo tre tentativi resta l'avviso giallo.
+
+**Limite importante:** questo intervento riduce gli avvisi temporanei, **non rende atomica l'installazione** e non garantisce coerenza se il file cambia tra due letture. La validazione strutturale viene comunque eseguita prima di accettare i dati. Non sono stati ancora effettuati test su Windows reale. Fino al collaudo, programmare le installazioni fuori dagli orari della scansione.
+
+**Prossimo passo:** test di concorrenza in una cartella isolata, con scansioni ripetute durante l'aggiornamento, e successiva sostituzione atomica del file ove supportata dal filesystem.
