@@ -173,3 +173,18 @@ Il backup precedente resta recuperabile in `agent/catalog-backups`, mentre il no
 **Limite importante:** questo intervento riduce gli avvisi temporanei, **non rende atomica l'installazione** e non garantisce coerenza se il file cambia tra due letture. La validazione strutturale viene comunque eseguita prima di accettare i dati. Non sono stati ancora effettuati test su Windows reale. Fino al collaudo, programmare le installazioni fuori dagli orari della scansione.
 
 **Prossimo passo:** test di concorrenza in una cartella isolata, con scansioni ripetute durante l'aggiornamento, e successiva sostituzione atomica del file ove supportata dal filesystem.
+
+
+## Aggiornamento v1.1 — prova di concorrenza isolata (12 novembre 2026)
+
+Abbiamo aggiunto `agent/Test-CpuCatalogConcurrency.ps1`: simula un lettore che apre ripetutamente un catalogo mentre l'installatore lo sostituisce. Lavora **solo in una cartella temporanea**: non modifica il catalogo operativo e non avvia Windows Update.
+
+Da PowerShell, nella cartella `agent`, esegui:
+
+```powershell
+powershell.exe -NoProfile -File .\Test-CpuCatalogConcurrency.ps1 -ReadCount 200
+```
+
+Il test conta tre tipi di lettura: **Valid** (vecchia o nuova versione coerente), **Missing** (file momentaneamente assente), **Invalid** (JSON non valido o versione inattesa). Un numero positivo di Missing dimostra che la sostituzione non e atomica; zero Missing **non prova** che non possa verificarsi. Qualsiasi Invalid fa fallire il test. La prova verifica la concorrenza con un lettore sintetico, **non** il Pre-Check completo né un blackout. Il codice deve ancora essere eseguito su Windows: non dichiarare i test superati finche non abbiamo un risultato reale.
+
+**Perche ci serve:** vogliamo capire se un controllo avviato durante un aggiornamento del catalogo possa osservare un file mancante o incoerente, prima di distribuire la procedura su molti PC. Il prossimo miglioramento sara una sostituzione atomica con gestione esplicita del recupero dopo guasto, seguita da test end-to-end Agent → backend → dashboard.
