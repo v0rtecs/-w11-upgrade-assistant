@@ -8,6 +8,7 @@ import os
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from boot_events import init_db, record_heartbeat
+from device_auth import authorized, load_registry
 
 MAX_BODY = 4096
 
@@ -15,10 +16,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/api/v1/heartbeat":
             return self.reply(404, {"error": "not_found"})
-        token = os.environ.get("W11_AGENT_TOKEN", "")
         supplied = self.headers.get("Authorization", "")
-        if not token or not hmac.compare_digest(supplied, "Bearer " + token):
-            return self.reply(401, {"error": "unauthorized"})
+        if self.server.device_registry is None:
+            token = os.environ.get("W11_AGENT_TOKEN", "")
+            if not token or not hmac.compare_digest(supplied, "Bearer " + token):
+                return self.reply(401, {"error": "unauthorized"})
         try:
             length = int(self.headers.get("Content-Length", "-1"))
         except ValueError:
@@ -31,6 +33,10 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
             if not isinstance(payload, dict):
                 raise ValueError("object required")
+            if self.server.device_registry is not None and not authorized(
+                self.server.device_registry, payload.get("computer_id"), supplied
+            ):
+                return self.reply(401, {"error": "unauthorized"})
             with sqlite3.connect(self.server.db_path, timeout=10) as db:
                 db.execute("PRAGMA busy_timeout=10000")
                 result = record_heartbeat(db, payload)
@@ -58,13 +64,16 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve():
     token = os.environ.get("W11_AGENT_TOKEN", "")
-    if len(token) < 32:
-        raise SystemExit("Set W11_AGENT_TOKEN to a random secret of at least 32 characters")
+    registry_path = os.environ.get("W11_DEVICE_TOKENS_FILE")
+    if not registry_path and len(token) < 32:
+        raise SystemExit("Set W11_DEVICE_TOKENS_FILE or W11_AGENT_TOKEN (32+ characters)")
+    registry = load_registry(registry_path) if registry_path else None
     db_path = os.environ.get("W11_DB_PATH", "w11-heartbeats.sqlite3")
     with sqlite3.connect(db_path) as db:
         init_db(db)
     server = ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("W11_PORT", "8765"))), Handler)
     server.db_path = db_path
+    server.device_registry = registry
     print("Heartbeat receiver listening on loopback only; HTTPS proxy required for remote access")
     server.serve_forever()
 
