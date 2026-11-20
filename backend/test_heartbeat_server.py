@@ -21,6 +21,7 @@ class HeartbeatHTTPTests(unittest.TestCase):
             init_db(db)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.db_path = self.db_path
+        self.server.device_registry = None
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.token = "test-token-" + "x" * 40
