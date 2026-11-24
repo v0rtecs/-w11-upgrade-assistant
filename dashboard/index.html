@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Monitor Windows Update</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:850px;margin:auto;padding:20px;background:#f4f6f8;color:#172333} h1{font-size:1.6rem} input,button{font:inherit;padding:10px;max-width:100%;box-sizing:border-box} input{width:100%} button{margin:8px 8px 8px 0} article{background:white;border:1px solid #ccd4dd;border-radius:12px;padding:16px;margin:12px 0;overflow-wrap:anywhere} .online{color:#17643b}.missing{color:#9a4600} small{display:block;color:#465567} [hidden]{display:none!important}
+</style></head><body><h1>Monitor Windows Update</h1><p>Console locale di sola lettura</p>
+<form id="login"><label for="token">Chiave di consultazione</label><input id="token" type="password" autocomplete="off" required><button>Connetti</button></form>
+<button id="refresh" disabled>Aggiorna</button><button id="logout" disabled>Disconnetti</button>
+<p id="message" role="status">Non connesso</p><section id="results" hidden><h2 id="summary"></h2><div id="devices"></div></section>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+let token="", generation=0, active=null;
+function disconnect(message="Non connesso"){
+ generation++; if(active)active.abort(); active=null; token=""; $("token").value="";
+ $("results").hidden=true; $("devices").replaceChildren(); $("summary").textContent="";
+ $("refresh").disabled=true; $("logout").disabled=true; $("message").textContent=message;
+}
+function date(value){if(!value)return "Non rilevato";const d=new Date(value);return Number.isNaN(d.getTime())?"Non disponibile":d.toLocaleString("it-IT");}
+async function refresh(){
+ if(!token||active)return;
+ const g=generation, controller=new AbortController();active=controller;
+ const timer=setTimeout(()=>controller.abort(),10000);
+ $("refresh").disabled=true;
+ try{
+ const response=await fetch("/api/v1/dashboard",{headers:{Authorization:"Bearer "+token},cache:"no-store",credentials:"omit",redirect:"error",signal:controller.signal});
+ if(g!==generation)return;
+ if(response.status===401){disconnect("Credenziale non valida");return;}
+ if(!response.ok)throw Error("API non disponibile");
+ const data=await response.json();if(g!==generation)return;
+ if(!Array.isArray(data.devices))throw Error("Risposta non valida");
+ const cards=document.createDocumentFragment();
+ for(const pc of data.devices){
+ const card=document.createElement("article"), name=document.createElement("strong"), status=document.createElement("p"), detail=document.createElement("small"), reboot=document.createElement("small");
+ name.textContent=pc.computer_id;status.textContent=pc.status==="online"?"Contatto recente":pc.status==="no_recent_contact"?"Assenza di contatto":"Stato sconosciuto";
+ status.className=pc.status==="online"?"online":"missing";
+ detail.textContent="Ultimo contatto: "+date(pc.last_seen_utc);reboot.textContent="Ultimo riavvio rilevato: "+date(pc.last_reboot_detected_utc);
+ card.append(name,status,detail,reboot);cards.append(card);
+ }
+ $("devices").replaceChildren(cards);$("summary").textContent=data.total+" PC · "+data.online+" con contatto recente · "+data.no_recent_contact+" da verificare";
+ $("results").hidden=false;$("message").textContent="Dati aggiornati: "+date(data.generated_at_utc);
+ }catch(e){if(g===generation){$("results").hidden=true;$("devices").replaceChildren();$("message").textContent="Dati non disponibili. Verificare il server e riprovare.";}}
+ finally{clearTimeout(timer);if(g===generation){active=null;$("refresh").disabled=!token;}}
+}
+$("login").addEventListener("submit",e=>{e.preventDefault();const value=$("token").value;disconnect();token=value;$("logout").disabled=false;refresh();});
+$("refresh").addEventListener("click",refresh);$("logout").addEventListener("click",()=>disconnect());
+setInterval(()=>{if(!document.hidden)refresh();},30000);
+</script></body></html>
