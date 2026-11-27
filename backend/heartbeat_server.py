@@ -10,14 +10,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from boot_events import init_db, record_heartbeat
 from device_auth import authorized, load_registry
 
+from update_history_store import init_db as init_history_db, record_batch
+
 MAX_BODY = 4096
+MAX_HISTORY_BODY = 2 * 1024 * 1024
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path != "/api/v1/heartbeat":
+        history = self.path == "/api/v1/update-history"
+        if not history and self.path != "/api/v1/heartbeat":
             return self.reply(404, {"error": "not_found"})
         supplied = self.headers.get("Authorization", "")
         if self.server.device_registry is None:
+            if history:
+                return self.reply(401, {"error": "individual_credentials_required"})
             token = os.environ.get("W11_AGENT_TOKEN", "")
             if not token or not hmac.compare_digest(supplied, "Bearer " + token):
                 return self.reply(401, {"error": "unauthorized"})
@@ -25,7 +31,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "-1"))
         except ValueError:
             length = -1
-        if not 0 < length <= MAX_BODY:
+        if not 0 < length <= (MAX_HISTORY_BODY if history else MAX_BODY):
             return self.reply(413, {"error": "invalid_size"})
         if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
             return self.reply(415, {"error": "json_required"})
@@ -39,11 +45,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(401, {"error": "unauthorized"})
             with sqlite3.connect(self.server.db_path, timeout=10) as db:
                 db.execute("PRAGMA busy_timeout=10000")
-                result = record_heartbeat(db, payload)
-        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+                if history:
+                    init_history_db(db)
+                    inserted = record_batch(db, payload["computer_id"], payload)
+                else:
+                    result = record_heartbeat(db, payload)
+        except (ValueError, KeyError, TypeError, AttributeError, OverflowError, json.JSONDecodeError):
             return self.reply(400, {"error": "invalid_payload"})
         except sqlite3.Error:
             return self.reply(503, {"error": "storage_unavailable"})
+        if history:
+            return self.reply(200, {"status": "ok", "inserted": inserted})
         return self.reply(200, {"status": result})
 
     def do_GET(self):
@@ -71,6 +83,7 @@ def serve():
     db_path = os.environ.get("W11_DB_PATH", "w11-heartbeats.sqlite3")
     with sqlite3.connect(db_path) as db:
         init_db(db)
+        init_history_db(db)
     server = ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("W11_PORT", "8765"))), Handler)
     server.db_path = db_path
     server.device_registry = registry
